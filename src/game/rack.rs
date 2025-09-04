@@ -16,6 +16,15 @@ impl Rack {
         &self.tiles
     }
 
+    pub fn remove_tile(&mut self, tile: Tile) -> bool {
+        if let Some(pos) = self.tiles.iter().position(|&t| t == tile) {
+            self.tiles.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn remove_tiles(&mut self, used_tiles: &[Tile]) -> bool {
         let mut temp_rack = self.tiles.clone();
 

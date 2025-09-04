@@ -9,7 +9,7 @@ use std::iter;
 
 #[derive(Debug)]
 pub struct Gaddag(pub Set<Vec<u8>>);
-const DELIMITER: u8 = b'+';
+pub const DELIMITER: u8 = b'+';
 
 /*
 e+xplain
@@ -146,6 +146,17 @@ impl Gaddag {
 
     pub fn is_terminal(&self, node_addr: CompiledAddr) -> bool {
         self.0.as_fst().node(node_addr).is_final()
+    }
+
+    pub fn valid_children_char(&self, node_addr: CompiledAddr) -> Vec<char> {
+        let mut valid_chars = Vec::new();
+        let node = self.0.as_fst().node(node_addr);
+        for i in 0..node.len() {
+            let transition = node.transition(i);
+            let child_letter = transition.inp as char;
+            valid_chars.push(child_letter);
+        }
+        valid_chars
     }
 }
 
