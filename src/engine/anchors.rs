@@ -1,18 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::{engine::moves::Direction, game::board::Board};
-
-#[derive(Debug, Eq, Hash, PartialEq)]
-pub struct Anchor {
-    pub row: usize,
-    pub col: usize,
-}
-
-impl Anchor {
-    pub fn at(row: usize, col: usize) -> Self {
-        Self { row, col }
-    }
-}
+use crate::{engine::moves::Direction, game::board::Board, util::Pos};
 
 impl super::moves::MoveGenerator {
     // first find all anchor tiles:
@@ -33,85 +21,66 @@ impl super::moves::MoveGenerator {
     */
 
     // finds both anchors and cross checks  from that direction
-    pub fn find_anchors(&self, board: &Board, direction: &Direction) -> (Vec<Anchor>, HashMap<Anchor, u32>) {
+    pub fn find_anchors(&self, board: &Board, direction: &Direction) -> (Vec<Pos>, HashMap<Pos, u32>) {
         if board.is_empty() {
-            return (vec![Anchor::at(7, 7)], HashMap::new()); // todo make all allowed?
+            return (vec![Pos::new(7, 7)], HashMap::new()); // todo make all allowed?
         }
-        let mut anchors: Vec<Anchor> = Vec::new();
 
-        // bitsets for valid letters
-        let mut cross_checks: HashMap<Anchor, u32> = HashMap::new();
+        let mut anchors = HashSet::new();
+        let mut cross_checks: HashMap<Pos, u32> = HashMap::new(); // bitsets for valid letters
 
-        // horizontally
-        for row in 0..board.height() {
-            for col in 0..board.width() {
-                if board.get_tile(row, col).is_some() {
-                    continue;
-                }
+        let directions = match direction {
+            Direction::Horizontal => [(0, -1), (0, 1)], // left, right
+            Direction::Vertical => [(-1, 0), (1, 0)],   // up, down
+        };
 
-                let (has_prev, has_next) = match direction {
-                    Direction::Horizontal => (col > 0 && board.get_tile(row, col - 1).is_some(), col < board.width() - 1 && board.get_tile(row, col + 1).is_some()),
-                    Direction::Vertical => (row > 0 && board.get_tile(row - 1, col).is_some(), row < board.height() - 1 && board.get_tile(row + 1, col).is_some()),
-                };
-
-                if has_prev || has_next {
-                    let mut prefix = Vec::new();
-                    let mut suffix = Vec::new();
-                    anchors.push(Anchor::at(row, col));
-
-                    match direction {
-                        Direction::Vertical => {
-                            // up/down
-                            for i in (0..row).rev() {
-                                if let Some(tile) = board.get_tile(i, col) {
-                                    prefix.insert(0, tile.to_byte());
-                                } else {
-                                    break;
-                                }
-                            }
-                            for i in (row + 1)..board.height() {
-                                if let Some(tile) = board.get_tile(i, col) {
-                                    suffix.push(tile.to_byte());
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-                        Direction::Horizontal => {
-                            // left/right
-                            for i in (0..col).rev() {
-                                if let Some(tile) = board.get_tile(row, i) {
-                                    prefix.insert(0, tile.to_byte());
-                                } else {
-                                    break;
-                                }
-                            }
-                            for i in (col + 1)..board.width() {
-                                if let Some(tile) = board.get_tile(row, i) {
-                                    suffix.push(tile.to_byte());
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    let mut valid_letters = 0u32;
-                    for c in b'A'..=b'Z' {
-                        let mut bytes = prefix.clone();
-                        bytes.push(c);
-                        bytes.extend(suffix.iter());
-                        if self.gaddag.contains_u8(&bytes) {
-                            valid_letters |= 1 << (c - b'A');
-                        }
-                    }
-                    if valid_letters != 0 {
-                        cross_checks.insert(Anchor::at(row, col), valid_letters);
+        // get all unique anchors
+        for (pos, _) in board.tiles() {
+            for &(dir_row, dir_col) in &directions {
+                if let Some(neighbor_pos) = pos.offset(dir_row, dir_col) {
+                    if board.get_tile(neighbor_pos).is_none() {
+                        anchors.insert(neighbor_pos);
                     }
                 }
             }
         }
 
-        (anchors, cross_checks)
+        for &pos in &anchors {
+            let mut prefix = Vec::new();
+            let mut suffix = Vec::new();
+
+            let mut current_pos = pos;
+            while let Some(prev_pos) = current_pos.offset(directions[0].0, directions[0].1) {
+                if let Some(tile) = board.get_tile(prev_pos) {
+                    prefix.insert(0, tile.to_byte());
+                    current_pos = prev_pos;
+                } else {
+                    break;
+                }
+            }
+
+            current_pos = pos;
+            while let Some(next_pos) = current_pos.offset(directions[1].0, directions[1].1) {
+                if let Some(tile) = board.get_tile(next_pos) {
+                    suffix.push(tile.to_byte());
+                    current_pos = next_pos;
+                } else {
+                    break;
+                }
+            }
+
+            let mut valid_letters = 0u32;
+            for c in b'A'..=b'Z' {
+                let mut bytes = prefix.clone();
+                bytes.push(c);
+                bytes.extend(suffix.iter());
+                if self.gaddag.contains_u8(&bytes) {
+                    valid_letters |= 1 << (c - b'A');
+                }
+            }
+            cross_checks.insert(pos, valid_letters);
+        }
+
+        (anchors.into_iter().collect(), cross_checks)
     }
 }

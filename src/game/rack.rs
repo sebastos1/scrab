@@ -25,6 +25,10 @@ impl Rack {
         None
     }
 
+    pub fn add_tile(&mut self, tile: Tile) {
+        self.tiles.push(tile);
+    }
+
     pub fn remove_tile(&mut self, tile: Tile) -> bool {
         if let Some(pos) = self.tiles.iter().position(|&t| t == tile) {
             self.tiles.remove(pos);

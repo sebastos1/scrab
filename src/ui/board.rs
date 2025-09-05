@@ -1,7 +1,9 @@
+use crate::game::board::BOARD_TILES;
 use crate::game::board::Board;
 use crate::game::board::Multiplier;
 use crate::game::rack::Rack;
 use crate::game::tile::Tile;
+use crate::util::Pos;
 use macroquad::prelude::*;
 
 pub const BOARD_SIZE: f32 = 600.0;
@@ -22,14 +24,14 @@ const BOARD_PADDING: f32 = 10.0;
 
 impl super::UI {
     // returns the top left corner of a tile
-    pub fn tile_position(&self, row: usize, col: usize) -> (f32, f32) {
-        let x = super::MARGIN + col as f32 * CELL_SIZE;
-        let y = super::MARGIN + row as f32 * CELL_SIZE;
+    pub fn tile_position(&self, pos: Pos) -> (f32, f32) {
+        let x = super::MARGIN + pos.col as f32 * CELL_SIZE;
+        let y = super::MARGIN + pos.row as f32 * CELL_SIZE;
         (x, y)
     }
 
-    pub fn tile_center(&self, row: usize, col: usize) -> (f32, f32) {
-        let (x, y) = self.tile_position(row, col);
+    pub fn tile_center(&self, pos: Pos) -> (f32, f32) {
+        let (x, y) = self.tile_position(pos);
         (x + CELL_SIZE / 2.0, y + CELL_SIZE / 2.0)
     }
 
@@ -46,16 +48,16 @@ impl super::UI {
             BOARD_COLOR,
         );
 
-        for row in 0..15 {
-            for col in 0..15 {
-                let (cell_x, cell_y) = self.tile_position(row, col);
+        for row in 0..BOARD_TILES {
+            for col in 0..BOARD_TILES {
+                let (cell_x, cell_y) = self.tile_position(Pos::new(row, col));
 
                 // for spacing between tiles
                 let tile_offset = (CELL_SIZE - TILE_SIZE) / 2.0;
                 let tile_x = cell_x + tile_offset;
                 let tile_y = cell_y + tile_offset;
 
-                if let Some(tile) = board.get_tile(row, col) {
+                if let Some(tile) = board.get_tile(Pos::new(row, col)) {
                     self.draw_placeable_tile(tile_x, tile_y, tile, false);
                 } else {
                     self.draw_multiplier_tile(tile_x, tile_y, board, row, col);
@@ -101,7 +103,7 @@ impl super::UI {
     }
 
     fn draw_multiplier_tile(&self, x: f32, y: f32, board: &Board, row: usize, col: usize) {
-        let (color, text) = match board.get_multiplier(row, col) {
+        let (color, text) = match board.get_multiplier(Pos::new(row, col)) {
             Multiplier::TripleWord => (TW_COLOR, "TW"),
             Multiplier::DoubleWord => (DW_COLOR, "DW"),
             Multiplier::TripleLetter => (TL_COLOR, "TL"),

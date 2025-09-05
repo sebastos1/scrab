@@ -1,13 +1,12 @@
+use crate::{
+    engine::gaddag::Gaddag,
+    game::{Game, board::Board, rack::Rack, tile::Tile},
+    util::Pos,
+};
+use fst::raw::CompiledAddr;
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
-};
-
-use fst::raw::CompiledAddr;
-
-use crate::{
-    engine::{anchors::Anchor, gaddag::Gaddag},
-    game::{Game, board::Board, rack::Rack, tile::Tile},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -19,7 +18,7 @@ pub enum Direction {
 #[derive(Debug, Clone)]
 pub struct Move {
     pub word: String,
-    pub pos: (usize, usize),
+    pub pos: Pos,
     pub direction: Direction,
     pub score: u32,
     pub tiles_used: Vec<PlayedTile>,
@@ -67,10 +66,10 @@ pub enum PlayedTile {
 }
 
 pub struct DebugThings {
-    pub horizontal_anchors: Vec<Anchor>,
-    pub vertical_anchors: Vec<Anchor>,
-    pub horizontal_allowed_ext: HashMap<Anchor, u32>,
-    pub vertical_allowed_ext: HashMap<Anchor, u32>,
+    pub horizontal_anchors: Vec<Pos>,
+    pub vertical_anchors: Vec<Pos>,
+    pub horizontal_allowed_ext: HashMap<Pos, u32>,
+    pub vertical_allowed_ext: HashMap<Pos, u32>,
 }
 
 /*
@@ -108,7 +107,7 @@ impl MoveGenerator {
 
         let mut moves = Vec::new();
         for anchor in &horizontal_anchors {
-            self.goorgoon(game, anchor, &mut moves);
+            self.goorgoon(game, anchor, &mut moves, &vertical_allowed_ext);
         }
         for mov in &moves {
             println!("Generated move: {:?}, starting at {:?}", mov.word, mov.pos);
@@ -125,13 +124,15 @@ impl MoveGenerator {
         )
     }
 
-    pub fn goorgoon(&self, game: &Game, anchor: &Anchor, mut moves: &mut Vec<Move>) {
+    pub fn goorgoon(&self, game: &Game, anchor: &Pos, mut moves: &mut Vec<Move>, cross_checks: &HashMap<Pos, u32>) {
         // before recursion, get suffix:
         // _ _ x R A I N _ -> RAIN
         let mut suffix = Vec::new();
-        for col in (anchor.col + 1)..game.board.width() {
-            if let Some(tile) = game.board.get_tile(anchor.row, col) {
+        let mut current_pos = *anchor;
+        while let Some(next_pos) = current_pos.offset(0, 1) {
+            if let Some(tile) = game.board.get_tile(next_pos) {
                 suffix.push(tile.to_byte());
+                current_pos = next_pos;
             } else {
                 break;
             }
@@ -139,7 +140,6 @@ impl MoveGenerator {
 
         // we start from the suffix node, which will always be valid. hopefully.
         let mut current_node = self.gaddag.0.as_fst().root().addr();
-
         for &byte in suffix.iter().rev() {
             // N, I, A, R for "RAIN"
             let node = self.gaddag.0.as_fst().node(current_node);
@@ -153,57 +153,60 @@ impl MoveGenerator {
 
         println!("string from utf8 suffix: {:?}", String::from_utf8(suffix.clone()));
 
+        // in-place swag
+        let mut word = suffix;
+        let mut played_tiles = VecDeque::new();
+        let mut rack = game.rack.clone();
+
         self.explore(
             &game.board,
-            &game.rack,
+            &mut rack,
             anchor,
             0,
             ExploreDir::Left,
-            VecDeque::new(),
+            &mut played_tiles,
             current_node,
             &mut moves,
-            String::from_utf8(suffix).unwrap_or_default(),
-            (anchor.row, anchor.col),
+            &mut word,
+            *anchor,
+            &cross_checks,
         );
     }
 
     fn explore(
         &self,
         board: &Board,
-        rack: &Rack,
-        anchor: &Anchor,
+        rack: &mut Rack,
+        anchor: &Pos,
         offset: i8,
         explore_dir: ExploreDir,
-        tiles_placed: VecDeque<PlayedTile>,
+        played_tiles: &mut VecDeque<PlayedTile>,
         current_node: CompiledAddr,
         moves: &mut Vec<Move>,
-        word: String,
-        word_start: (usize, usize),
+        word: &mut Vec<u8>,
+        word_start: Pos,
+        cross_checks: &HashMap<Pos, u32>, // use the opposite direction's cross checks
     ) {
-        let col = anchor.col as i8 + offset;
-        let row = anchor.row as i8; // todo
-        if col < 0 || col >= board.width() as i8 {
-            return;
-        }
-        let col = col as usize;
-        let row = row as usize;
+        let current_pos = match anchor.offset(0, offset as isize) {
+            Some(pos) => pos,
+            None => return, // oob
+        };
 
-        if let Some(tile) = board.get_tile(row, col) {
-            println!("Board has tile '{}' at ({}, {})", tile.to_char(), row, col);
+        if let Some(tile) = board.get_tile(current_pos) {
+            println!("Board has tile '{}' at ({}, {})", tile.to_char(), current_pos.row, current_pos.col);
             if let Some(next_node) = self.gaddag.can_next(current_node, tile.to_char()) {
-                let new_word = match explore_dir {
-                    ExploreDir::Left => format!("{}{}", tile.to_char(), word),
-                    ExploreDir::Right => format!("{}{}", word, tile.to_char()),
-                };
-                let new_word_start = match explore_dir {
-                    ExploreDir::Left => (row, col),
-                    ExploreDir::Right => word_start,
-                };
-
-                let mut new_tiles_placed = tiles_placed.clone();
+                let new_word_start;
                 match explore_dir {
-                    ExploreDir::Left => new_tiles_placed.push_front(PlayedTile::FromBoard),
-                    ExploreDir::Right => new_tiles_placed.push_back(PlayedTile::FromBoard),
+                    ExploreDir::Left => {
+                        word.insert(0, tile.to_byte());
+                        played_tiles.push_front(PlayedTile::FromBoard);
+                        new_word_start = current_pos;
+                    }
+                    ExploreDir::Right => {
+                        word.push(tile.to_byte());
+                        played_tiles.push_back(PlayedTile::FromBoard);
+                        new_word_start = word_start;
+                    }
                 }
 
                 self.explore(
@@ -212,34 +215,46 @@ impl MoveGenerator {
                     anchor,
                     offset + explore_dir as i8,
                     explore_dir,
-                    new_tiles_placed,
+                    played_tiles,
                     next_node,
                     moves,
-                    new_word,
+                    word,
                     new_word_start,
+                    cross_checks,
                 );
+
+                match explore_dir {
+                    ExploreDir::Left => {
+                        word.remove(0);
+                        played_tiles.pop_front();
+                    }
+                    ExploreDir::Right => {
+                        word.pop();
+                        played_tiles.pop_back();
+                    }
+                }
             }
             return;
         }
 
-        if self.gaddag.is_terminal(current_node) && tiles_placed.iter().any(|t| matches!(t, PlayedTile::FromRack(_))) {
-            println!("tiles placed {:?}", tiles_placed);
+        if self.gaddag.is_terminal(current_node) && played_tiles.iter().any(|t| matches!(t, PlayedTile::FromRack(_))) {
+            println!("tiles placed {:?}", played_tiles);
             let move_obj = Move {
-                word: word.clone(),
+                word: String::from_utf8_lossy(word).to_string(),
                 pos: word_start,
                 direction: Direction::Horizontal,
                 score: 0,
-                tiles_used: tiles_placed.iter().cloned().collect(),
+                tiles_used: played_tiles.iter().cloned().collect(),
                 words_formed: vec![],
             };
             moves.push(move_obj);
-            println!("\n FOUND MOVE: {}", word);
+            println!("\n FOUND MOVE: {:?}", word.iter().map(|&b| b as char).collect::<String>());
         }
 
         for letter in self.gaddag.valid_children_char(current_node) {
             // if we hit the delimiter, we start looking right instead
             if letter == super::gaddag::DELIMITER as char {
-                println!("Hit delimiter at ({}, {})", row, col);
+                println!("Hit delimiter at ({}, {})", current_pos.row, current_pos.col);
                 if let Some(delimiter_node) = self.gaddag.can_next(current_node, letter) {
                     self.explore(
                         board,
@@ -247,11 +262,12 @@ impl MoveGenerator {
                         anchor,
                         1,
                         ExploreDir::Right,
-                        tiles_placed.clone(),
+                        played_tiles,
                         delimiter_node,
                         moves,
-                        word.clone(),
+                        word,
                         word_start,
+                        cross_checks,
                     );
                 }
                 continue;
@@ -264,41 +280,59 @@ impl MoveGenerator {
                 println!("Rack has letter '{}'", tile.to_char());
 
                 // check crosschecks
+                if let Some(&cross_check_mask) = cross_checks.get(&current_pos) {
+                    let letter_bit = 1 << (letter as u8 - b'A');
+                    if cross_check_mask & letter_bit == 0 {
+                        println!("\n\nCross check FAILED for letter '{}'", letter);
+                        continue;
+                    }
+                }
 
                 println!("Placing letter '{}'", letter);
-                let mut new_rack = rack.clone();
-                new_rack.remove_tile(tile);
-                println!("Rack after removing: {:?}", new_rack);
+                rack.remove_tile(tile);
+                println!("Rack after removing: {:?}", rack);
+                let letter_byte = letter as u8;
+                let new_word_start;
+                match explore_dir {
+                    ExploreDir::Left => {
+                        word.insert(0, letter_byte);
+                        played_tiles.push_front(PlayedTile::FromRack(tile));
+                        new_word_start = current_pos;
+                    }
+                    ExploreDir::Right => {
+                        word.push(letter_byte);
+                        played_tiles.push_back(PlayedTile::FromRack(tile));
+                        new_word_start = word_start;
+                    }
+                }
 
                 if let Some(next_node) = self.gaddag.can_next(current_node, letter) {
-                    let mut new_tiles_placed = tiles_placed.clone();
-                    match explore_dir {
-                        ExploreDir::Left => new_tiles_placed.push_front(PlayedTile::FromRack(tile)),
-                        ExploreDir::Right => new_tiles_placed.push_back(PlayedTile::FromRack(tile)),
-                    }
-
-                    let new_word = match explore_dir {
-                        ExploreDir::Left => format!("{}{}", letter, word),
-                        ExploreDir::Right => format!("{}{}", word, letter),
-                    };
-                    let new_word_start = match explore_dir {
-                        ExploreDir::Left => (row, col),
-                        ExploreDir::Right => word_start,
-                    };
-
                     self.explore(
                         board,
-                        &new_rack,
+                        rack,
                         anchor,
                         offset + explore_dir as i8,
                         explore_dir,
-                        new_tiles_placed,
+                        played_tiles,
                         next_node,
                         moves,
-                        new_word,
+                        word,
                         new_word_start,
+                        cross_checks,
                     );
                 }
+
+                match explore_dir {
+                    ExploreDir::Left => {
+                        word.remove(0);
+                        played_tiles.pop_front();
+                    }
+                    ExploreDir::Right => {
+                        word.pop();
+                        played_tiles.pop_back();
+                    }
+                }
+                rack.add_tile(tile);
             }
         }
     }

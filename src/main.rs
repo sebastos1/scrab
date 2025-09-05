@@ -1,6 +1,7 @@
 mod engine;
 pub mod game;
 pub mod ui;
+pub mod util;
 
 use crate::ui::get_window_config;
 use engine::gaddag::Gaddag;
