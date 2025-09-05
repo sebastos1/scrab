@@ -50,17 +50,18 @@ impl super::UI {
 
         for row in 0..BOARD_TILES {
             for col in 0..BOARD_TILES {
-                let (cell_x, cell_y) = self.tile_position(Pos::new(row, col));
+                let pos = Pos::new(row, col);
+                let (cell_x, cell_y) = self.tile_position(pos);
 
                 // for spacing between tiles
                 let tile_offset = (CELL_SIZE - TILE_SIZE) / 2.0;
                 let tile_x = cell_x + tile_offset;
                 let tile_y = cell_y + tile_offset;
 
-                if let Some(tile) = board.get_tile(Pos::new(row, col)) {
+                if let Some(tile) = board.get_tile(pos) {
                     self.draw_placeable_tile(tile_x, tile_y, tile, false);
                 } else {
-                    self.draw_multiplier_tile(tile_x, tile_y, board, row, col);
+                    self.draw_multiplier_tile(tile_x, tile_y, board, pos);
                 }
             }
         }
@@ -102,14 +103,14 @@ impl super::UI {
         self.draw_tile_content(x, y, tile, BLACK);
     }
 
-    fn draw_multiplier_tile(&self, x: f32, y: f32, board: &Board, row: usize, col: usize) {
-        let (color, text) = match board.get_multiplier(Pos::new(row, col)) {
+    fn draw_multiplier_tile(&self, x: f32, y: f32, board: &Board, pos: Pos) {
+        let (color, text) = match board.get_multiplier(pos) {
             Multiplier::TripleWord => (TW_COLOR, "TW"),
             Multiplier::DoubleWord => (DW_COLOR, "DW"),
             Multiplier::TripleLetter => (TL_COLOR, "TL"),
             Multiplier::DoubleLetter => (DL_COLOR, "DL"),
             Multiplier::Normal => {
-                if row == 7 && col == 7 {
+                if pos.row == 7 && pos.col == 7 {
                     (START_TILE_COLOR, "★")
                 } else {
                     (BLANK_TILE_COLOR, "")

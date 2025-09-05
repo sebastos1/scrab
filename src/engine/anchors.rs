@@ -1,6 +1,28 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::{engine::moves::Direction, game::board::Board, util::Pos};
+use crate::{
+    engine::moves::Direction,
+    game::board::{BOARD_TILES, Board},
+    util::Pos,
+};
+
+pub type CrossChecks = [[u32; BOARD_TILES]; BOARD_TILES];
+
+pub trait CrossChecksExt {
+    fn all_ones() -> CrossChecks;
+}
+
+impl CrossChecksExt for CrossChecks {
+    fn all_ones() -> CrossChecks {
+        let mut result = CrossChecks::default();
+        for row in 0..BOARD_TILES {
+            for col in 0..BOARD_TILES {
+                result[row][col] = u32::MAX;
+            }
+        }
+        result
+    }
+}
 
 impl super::moves::MoveGenerator {
     // first find all anchor tiles:
@@ -21,13 +43,13 @@ impl super::moves::MoveGenerator {
     */
 
     // finds both anchors and cross checks  from that direction
-    pub fn find_anchors(&self, board: &Board, direction: &Direction) -> (Vec<Pos>, HashMap<Pos, u32>) {
+    pub fn find_anchors(&self, board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChecks) {
         if board.is_empty() {
-            return (vec![Pos::new(7, 7)], HashMap::new()); // todo make all allowed?
+            return (vec![Pos::new(7, 7)], CrossChecks::all_ones());
         }
 
         let mut anchors = HashSet::new();
-        let mut cross_checks: HashMap<Pos, u32> = HashMap::new(); // bitsets for valid letters
+        let mut cross_checks = CrossChecks::all_ones(); // bitsets for valid letters
 
         let directions = match direction {
             Direction::Horizontal => [(0, -1), (0, 1)], // left, right
@@ -78,7 +100,7 @@ impl super::moves::MoveGenerator {
                     valid_letters |= 1 << (c - b'A');
                 }
             }
-            cross_checks.insert(pos, valid_letters);
+            cross_checks[pos.row][pos.col] = valid_letters;
         }
 
         (anchors.into_iter().collect(), cross_checks)

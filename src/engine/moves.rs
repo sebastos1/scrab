@@ -1,13 +1,10 @@
 use crate::{
-    engine::gaddag::Gaddag,
+    engine::{anchors::CrossChecks, gaddag::Gaddag},
     game::{Game, board::Board, rack::Rack, tile::Tile},
     util::Pos,
 };
 use fst::raw::CompiledAddr;
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Debug,
-};
+use std::{collections::VecDeque, fmt::Debug};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
@@ -65,15 +62,8 @@ pub enum PlayedTile {
     FromBoard, // don't need to know it
 }
 
-pub struct DebugThings {
-    pub horizontal_anchors: Vec<Pos>,
-    pub vertical_anchors: Vec<Pos>,
-    pub horizontal_allowed_ext: HashMap<Pos, u32>,
-    pub vertical_allowed_ext: HashMap<Pos, u32>,
-}
-
 /*
-    both approaches use the total set of anchors
+    This is probably not reflecting the current implementation
 
     We keep both the start and ending anchor points:
     _ x R A I N x
@@ -101,35 +91,33 @@ impl MoveGenerator {
     }
 
     // we start from a board, with an otherwise empty slate
-    pub fn generate_moves(&self, game: &Game) -> (DebugThings, Vec<Move>) {
+    pub fn generate_moves(&self, game: &Game) -> Vec<Move> {
         let (horizontal_anchors, horizontal_allowed_ext) = self.find_anchors(&game.board, &Direction::Horizontal);
         let (vertical_anchors, vertical_allowed_ext) = self.find_anchors(&game.board, &Direction::Vertical);
 
         let mut moves = Vec::new();
         for anchor in &horizontal_anchors {
-            self.goorgoon(game, anchor, &mut moves, &vertical_allowed_ext);
+            self.goorgoon(game, anchor, &mut moves, &vertical_allowed_ext, Direction::Horizontal);
         }
-        for mov in &moves {
-            println!("Generated move: {:?}, starting at {:?}", mov.word, mov.pos);
+        for anchor in &vertical_anchors {
+            self.goorgoon(game, anchor, &mut moves, &horizontal_allowed_ext, Direction::Vertical);
         }
 
-        (
-            DebugThings {
-                horizontal_anchors,
-                vertical_anchors,
-                horizontal_allowed_ext,
-                vertical_allowed_ext,
-            },
-            moves,
-        )
+        moves
     }
 
-    pub fn goorgoon(&self, game: &Game, anchor: &Pos, mut moves: &mut Vec<Move>, cross_checks: &HashMap<Pos, u32>) {
+    pub fn goorgoon(&self, game: &Game, anchor: &Pos, mut moves: &mut Vec<Move>, cross_checks: &CrossChecks, direction: Direction) {
         // before recursion, get suffix:
         // _ _ x R A I N _ -> RAIN
         let mut suffix = Vec::new();
         let mut current_pos = *anchor;
-        while let Some(next_pos) = current_pos.offset(0, 1) {
+
+        let suffix_dir = match direction {
+            Direction::Horizontal => (0, 1),
+            Direction::Vertical => (1, 0),
+        };
+
+        while let Some(next_pos) = current_pos.offset(suffix_dir.0, suffix_dir.1) {
             if let Some(tile) = game.board.get_tile(next_pos) {
                 suffix.push(tile.to_byte());
                 current_pos = next_pos;
@@ -146,12 +134,9 @@ impl MoveGenerator {
             if let Some(transition_idx) = node.find_input(byte) {
                 current_node = node.transition_addr(transition_idx);
             } else {
-                println!("Could not traverse suffix - invalid word on board");
                 return;
             }
         }
-
-        println!("string from utf8 suffix: {:?}", String::from_utf8(suffix.clone()));
 
         // in-place swag
         let mut word = suffix;
@@ -170,6 +155,7 @@ impl MoveGenerator {
             &mut word,
             *anchor,
             &cross_checks,
+            direction,
         );
     }
 
@@ -185,15 +171,20 @@ impl MoveGenerator {
         moves: &mut Vec<Move>,
         word: &mut Vec<u8>,
         word_start: Pos,
-        cross_checks: &HashMap<Pos, u32>, // use the opposite direction's cross checks
+        cross_checks: &CrossChecks, // use the opposite direction's cross checks
+        direction: Direction,
     ) {
-        let current_pos = match anchor.offset(0, offset as isize) {
+        let offset_dir = match direction {
+            Direction::Horizontal => (0, 1),
+            Direction::Vertical => (1, 0),
+        };
+
+        let current_pos = match anchor.offset(offset_dir.0 * offset as isize, offset_dir.1 * offset as isize) {
             Some(pos) => pos,
-            None => return, // oob
+            None => return,
         };
 
         if let Some(tile) = board.get_tile(current_pos) {
-            println!("Board has tile '{}' at ({}, {})", tile.to_char(), current_pos.row, current_pos.col);
             if let Some(next_node) = self.gaddag.can_next(current_node, tile.to_char()) {
                 let new_word_start;
                 match explore_dir {
@@ -221,6 +212,7 @@ impl MoveGenerator {
                     word,
                     new_word_start,
                     cross_checks,
+                    direction,
                 );
 
                 match explore_dir {
@@ -238,23 +230,20 @@ impl MoveGenerator {
         }
 
         if self.gaddag.is_terminal(current_node) && played_tiles.iter().any(|t| matches!(t, PlayedTile::FromRack(_))) {
-            println!("tiles placed {:?}", played_tiles);
             let move_obj = Move {
                 word: String::from_utf8_lossy(word).to_string(),
                 pos: word_start,
-                direction: Direction::Horizontal,
+                direction,
                 score: 0,
                 tiles_used: played_tiles.iter().cloned().collect(),
                 words_formed: vec![],
             };
             moves.push(move_obj);
-            println!("\n FOUND MOVE: {:?}", word.iter().map(|&b| b as char).collect::<String>());
         }
 
         for letter in self.gaddag.valid_children_char(current_node) {
             // if we hit the delimiter, we start looking right instead
             if letter == super::gaddag::DELIMITER as char {
-                println!("Hit delimiter at ({}, {})", current_pos.row, current_pos.col);
                 if let Some(delimiter_node) = self.gaddag.can_next(current_node, letter) {
                     self.explore(
                         board,
@@ -268,29 +257,23 @@ impl MoveGenerator {
                         word,
                         word_start,
                         cross_checks,
+                        direction,
                     );
                 }
                 continue;
             }
 
-            println!("Can place letter '{}' at ({}, {})", letter, anchor.row, anchor.col);
-
             // check rack
             if let Some(tile) = rack.has_letter(letter as u8) {
-                println!("Rack has letter '{}'", tile.to_char());
-
                 // check crosschecks
-                if let Some(&cross_check_mask) = cross_checks.get(&current_pos) {
-                    let letter_bit = 1 << (letter as u8 - b'A');
-                    if cross_check_mask & letter_bit == 0 {
-                        println!("\n\nCross check FAILED for letter '{}'", letter);
-                        continue;
-                    }
+                let cross_check_mask = cross_checks[current_pos.row][current_pos.col];
+                let letter_bit = 1 << (letter as u8 - b'A');
+                if cross_check_mask & letter_bit == 0 {
+                    continue;
                 }
 
-                println!("Placing letter '{}'", letter);
                 rack.remove_tile(tile);
-                println!("Rack after removing: {:?}", rack);
+
                 let letter_byte = letter as u8;
                 let new_word_start;
                 match explore_dir {
@@ -319,6 +302,7 @@ impl MoveGenerator {
                         word,
                         new_word_start,
                         cross_checks,
+                        direction,
                     );
                 }
 

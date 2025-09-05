@@ -1,65 +1,12 @@
 use macroquad::prelude::*;
 
 use crate::{
-    engine::moves::{DebugThings, Direction, Move, PlayedTile},
+    engine::moves::{Direction, Move, PlayedTile},
     ui::{MARGIN, board::BOARD_SIZE},
     util::Pos,
 };
 
 impl super::UI {
-    pub fn draw_debug_info(&self, debug: &DebugThings) {
-        let start_x = super::MARGIN;
-        let start_y = super::MARGIN;
-        let mouse_pos = mouse_position();
-
-        for anchor in &debug.horizontal_anchors {
-            let (x, y) = self.tile_center(*anchor);
-            draw_circle(x, y, 4.0, RED);
-        }
-
-        for anchor in &debug.vertical_anchors {
-            let (x, y) = self.tile_center(*anchor);
-            draw_circle(x, y, 4.0, BLUE);
-        }
-
-        if mouse_pos.0 >= start_x && mouse_pos.1 >= start_y {
-            let pos = Pos::new(
-                ((mouse_pos.0 - start_x) / super::board::CELL_SIZE) as usize,
-                ((mouse_pos.1 - start_y) / super::board::CELL_SIZE) as usize,
-            );
-
-            if pos.col < 15 && pos.row < 15 {
-                if let Some(bits) = debug.horizontal_allowed_ext.get(&pos) {
-                    self.draw_valid_letters(mouse_pos.0, mouse_pos.1, *bits, "Horizontal");
-                }
-                if let Some(bits) = debug.vertical_allowed_ext.get(&pos) {
-                    self.draw_valid_letters(mouse_pos.0, mouse_pos.1, *bits, "Vertical");
-                }
-            }
-        }
-    }
-
-    fn draw_valid_letters(&self, x: f32, y: f32, bits: u32, label: &str) {
-        let mut valid_chars = String::new();
-        for i in 0..26 {
-            if (bits & (1 << i)) != 0 {
-                valid_chars.push((b'A' + i as u8) as char);
-            }
-        }
-
-        draw_text_ex(
-            &format!("{}: {}", label, valid_chars),
-            x,
-            y,
-            TextParams {
-                font: self.font.as_ref(),
-                font_size: 12,
-                color: BLACK,
-                ..Default::default()
-            },
-        );
-    }
-
     pub fn draw_move_list(&mut self, moves: &[Move]) {
         let moves_x = MARGIN + BOARD_SIZE + 30.0;
         let moves_y = MARGIN;

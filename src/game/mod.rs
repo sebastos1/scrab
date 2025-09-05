@@ -24,6 +24,7 @@ pub fn init() -> Game {
         Tile::Blank,
     ]);
 
+    board.place_tile(Pos::new(7, 4), Tile::S);
     board.place_tile(Pos::new(7, 6), Tile::R);
     board.place_tile(Pos::new(7, 7), Tile::A);
     board.place_tile(Pos::new(7, 8), Tile::I);
