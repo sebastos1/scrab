@@ -6,7 +6,7 @@ use macroquad::prelude::*;
 
 pub const BOARD_SIZE: f32 = 600.0;
 pub const CELL_SIZE: f32 = BOARD_SIZE / 15.0;
-const TILE_SIZE: f32 = CELL_SIZE * 0.9;
+pub const TILE_SIZE: f32 = CELL_SIZE * 0.9;
 const CORNER_RADIUS: f32 = 6.0;
 
 const BOARD_COLOR: Color = WHITE;
@@ -22,14 +22,14 @@ const BOARD_PADDING: f32 = 10.0;
 
 impl super::UI {
     // returns the top left corner of a tile
-    pub fn tile_position(row: usize, col: usize) -> (f32, f32) {
+    pub fn tile_position(&self, row: usize, col: usize) -> (f32, f32) {
         let x = super::MARGIN + col as f32 * CELL_SIZE;
         let y = super::MARGIN + row as f32 * CELL_SIZE;
         (x, y)
     }
 
-    pub fn tile_center(row: usize, col: usize) -> (f32, f32) {
-        let (x, y) = Self::tile_position(row, col);
+    pub fn tile_center(&self, row: usize, col: usize) -> (f32, f32) {
+        let (x, y) = self.tile_position(row, col);
         (x + CELL_SIZE / 2.0, y + CELL_SIZE / 2.0)
     }
 
@@ -37,11 +37,18 @@ impl super::UI {
         let start_x = super::MARGIN;
         let start_y = super::MARGIN;
 
-        self.draw_rounded_rect(start_x - BOARD_PADDING, start_y - BOARD_PADDING, BOARD_SIZE + BOARD_PADDING * 2., BOARD_SIZE + BOARD_PADDING * 2., CORNER_RADIUS * 2.0, BOARD_COLOR);
+        self.draw_rounded_rect(
+            start_x - BOARD_PADDING,
+            start_y - BOARD_PADDING,
+            BOARD_SIZE + BOARD_PADDING * 2.,
+            BOARD_SIZE + BOARD_PADDING * 2.,
+            CORNER_RADIUS * 2.0,
+            BOARD_COLOR,
+        );
 
         for row in 0..15 {
             for col in 0..15 {
-                let (cell_x, cell_y) = Self::tile_position(row, col);
+                let (cell_x, cell_y) = self.tile_position(row, col);
 
                 // for spacing between tiles
                 let tile_offset = (CELL_SIZE - TILE_SIZE) / 2.0;
@@ -72,8 +79,15 @@ impl super::UI {
         }
     }
 
-    fn draw_placeable_tile(&self, x: f32, y: f32, tile: Tile, highlight: bool) {
-        self.draw_rounded_rect(x - TILE_SIZE * 0.05, y - TILE_SIZE * 0.05, TILE_SIZE * 1.1, TILE_SIZE * 1.1, CORNER_RADIUS, PLACEABLE_TILE_BORDER);
+    pub fn draw_placeable_tile(&self, x: f32, y: f32, tile: Tile, highlight: bool) {
+        self.draw_rounded_rect(
+            x - TILE_SIZE * 0.05,
+            y - TILE_SIZE * 0.05,
+            TILE_SIZE * 1.1,
+            TILE_SIZE * 1.1,
+            CORNER_RADIUS,
+            PLACEABLE_TILE_BORDER,
+        );
 
         let bg_color = if highlight {
             Color::new(1.0, 0.8, 0.8, 1.0) // red tint
@@ -173,7 +187,7 @@ impl super::UI {
     }
 
     // magic rounded rect
-    fn draw_rounded_rect(&self, x: f32, y: f32, w: f32, h: f32, r: f32, color: Color) {
+    pub fn draw_rounded_rect(&self, x: f32, y: f32, w: f32, h: f32, r: f32, color: Color) {
         draw_rectangle(x + r, y, w - 2.0 * r, h, color);
         draw_rectangle(x, y + r, w, h - 2.0 * r, color);
         draw_circle(x + r, y + r, r, color);

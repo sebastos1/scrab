@@ -16,6 +16,15 @@ impl Rack {
         &self.tiles
     }
 
+    pub fn has_letter(&self, letter: u8) -> Option<Tile> {
+        for &tile in &self.tiles {
+            if tile.to_byte() == letter || tile == Tile::Blank {
+                return Some(tile);
+            }
+        }
+        None
+    }
+
     pub fn remove_tile(&mut self, tile: Tile) -> bool {
         if let Some(pos) = self.tiles.iter().position(|&t| t == tile) {
             self.tiles.remove(pos);

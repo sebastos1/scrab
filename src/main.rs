@@ -15,23 +15,32 @@ async fn main() {
 
     let move_generator = engine::moves::MoveGenerator::new(gaddag);
     let game = game::init();
-    let debug = move_generator.generate_moves(&game);
 
+    let mut debug_things = crate::engine::moves::DebugThings {
+        horizontal_anchors: Vec::new(),
+        vertical_anchors: Vec::new(),
+        horizontal_allowed_ext: std::collections::HashMap::new(),
+        vertical_allowed_ext: std::collections::HashMap::new(),
+    };
+    let mut moves = Vec::new();
     let mut board_updated = true;
-    let ui = UI::new().await;
+    let mut ui = UI::new().await;
     loop {
         clear_background(ui::BACKGROUND_COLOR);
 
         ui.draw_board(&game.board);
         ui.draw_rack(&game.rack);
 
-        ui.draw_debug_info(&debug);
-
         if board_updated {
-            // let start = std::time::Instant::now();
-            // let elapsed = start.elapsed();
+            let start = std::time::Instant::now();
+            (debug_things, moves) = move_generator.generate_moves(&game);
+            let elapsed = start.elapsed();
+            println!("Move generation took: {:.2?}", elapsed);
             board_updated = false;
         }
+
+        ui.draw_debug_info(&debug_things);
+        ui.draw_move_list(&moves);
 
         if is_key_pressed(KeyCode::R) {
             board_updated = true;

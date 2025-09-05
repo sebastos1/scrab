@@ -86,7 +86,9 @@ impl Gaddag {
         let search_val: String = input.chars().rev().collect();
 
         let delimiter_str = char::from(DELIMITER).to_string();
-        let matcher = Str::new(&search_val).starts_with().intersection(Subsequence::new(&delimiter_str).complement());
+        let matcher = Str::new(&search_val)
+            .starts_with()
+            .intersection(Subsequence::new(&delimiter_str).complement());
 
         let stream = self.0.search(matcher).into_stream();
         stream.into_strs().unwrap().iter().map(|w| Self::demangle_item(w)).collect()
@@ -113,7 +115,14 @@ impl Gaddag {
     ///Applies a fst matcher to the Gaddag, and returns all the words that
     ///match.
     fn search_fst(&self, matcher: impl Automaton) -> Vec<String> {
-        self.0.search(matcher).into_stream().into_strs().unwrap().iter().map(|w| Self::demangle_item(w)).collect()
+        self.0
+            .search(matcher)
+            .into_stream()
+            .into_strs()
+            .unwrap()
+            .iter()
+            .map(|w| Self::demangle_item(w))
+            .collect()
     }
 
     ///Returns the node address for a prefix in the dictionary.
@@ -159,10 +168,3 @@ impl Gaddag {
         valid_chars
     }
 }
-
-// println!("Contains 'CODEBOOK': {}", gaddag.contains("CODEBOOK"));
-// println!("Starts with 'CODE': {:?}", gaddag.starts_with("CODE"));
-// println!("Ends with 'BOOK': {:?}", gaddag.ends_with("BOOK"));
-// println!("Ends with 'E': {:?}", gaddag.ends_with("E"));
-// println!("Ends with 'A': {:?}", gaddag.ends_with("A"));
-// println!("contains substring DEB: {:?}", gaddag.substring("DEB"));

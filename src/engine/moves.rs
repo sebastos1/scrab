@@ -1,9 +1,12 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+};
 
 use fst::raw::CompiledAddr;
 
 use crate::{
-    engine::gaddag::Gaddag,
+    engine::{anchors::Anchor, gaddag::Gaddag},
     game::{Game, board::Board, rack::Rack, tile::Tile},
 };
 
@@ -15,13 +18,12 @@ pub enum Direction {
 
 #[derive(Debug, Clone)]
 pub struct Move {
-    word: String,
-    row: usize,
-    col: usize,
-    direction: Direction,
-    score: u32,
-    tiles_used: Vec<Tile>,
-    words_formed: Vec<String>,
+    pub word: String,
+    pub pos: (usize, usize),
+    pub direction: Direction,
+    pub score: u32,
+    pub tiles_used: Vec<PlayedTile>,
+    pub words_formed: Vec<String>,
 }
 
 /*
@@ -52,11 +54,23 @@ pub struct MoveGenerator {
     pub gaddag: Gaddag,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ExploreDir {
+    Left = -1,
+    Right = 1,
+}
+
+#[derive(Debug, Clone)]
+pub enum PlayedTile {
+    FromRack(Tile),
+    FromBoard, // don't need to know it
+}
+
 pub struct DebugThings {
-    pub horizontal_anchors: Vec<(usize, usize)>,
-    pub vertical_anchors: Vec<(usize, usize)>,
-    pub horizontal_allowed_ext: HashMap<(usize, usize), u32>,
-    pub vertical_allowed_ext: HashMap<(usize, usize), u32>,
+    pub horizontal_anchors: Vec<Anchor>,
+    pub vertical_anchors: Vec<Anchor>,
+    pub horizontal_allowed_ext: HashMap<Anchor, u32>,
+    pub vertical_allowed_ext: HashMap<Anchor, u32>,
 }
 
 /*
@@ -88,28 +102,35 @@ impl MoveGenerator {
     }
 
     // we start from a board, with an otherwise empty slate
-    pub fn generate_moves(&self, game: &Game) -> DebugThings {
+    pub fn generate_moves(&self, game: &Game) -> (DebugThings, Vec<Move>) {
         let (horizontal_anchors, horizontal_allowed_ext) = self.find_anchors(&game.board, &Direction::Horizontal);
         let (vertical_anchors, vertical_allowed_ext) = self.find_anchors(&game.board, &Direction::Vertical);
 
-        for &(row, col) in &horizontal_anchors {
-            self.goorgoon(game, row, col);
+        let mut moves = Vec::new();
+        for anchor in &horizontal_anchors {
+            self.goorgoon(game, anchor, &mut moves);
+        }
+        for mov in &moves {
+            println!("Generated move: {:?}, starting at {:?}", mov.word, mov.pos);
         }
 
-        DebugThings {
-            horizontal_anchors,
-            vertical_anchors,
-            horizontal_allowed_ext,
-            vertical_allowed_ext,
-        }
+        (
+            DebugThings {
+                horizontal_anchors,
+                vertical_anchors,
+                horizontal_allowed_ext,
+                vertical_allowed_ext,
+            },
+            moves,
+        )
     }
 
-    pub fn goorgoon(&self, game: &Game, anchor_row: usize, anchor_col: usize) {
+    pub fn goorgoon(&self, game: &Game, anchor: &Anchor, mut moves: &mut Vec<Move>) {
         // before recursion, get suffix:
         // _ _ x R A I N _ -> RAIN
         let mut suffix = Vec::new();
-        for col in (anchor_col + 1)..game.board.width() {
-            if let Some(tile) = game.board.get_tile(anchor_row, col) {
+        for col in (anchor.col + 1)..game.board.width() {
+            if let Some(tile) = game.board.get_tile(anchor.row, col) {
                 suffix.push(tile.to_byte());
             } else {
                 break;
@@ -130,22 +151,155 @@ impl MoveGenerator {
             }
         }
 
-        self.explore_left(&game.board, &game.rack, anchor_row, anchor_col, Vec::new(), current_node);
+        println!("string from utf8 suffix: {:?}", String::from_utf8(suffix.clone()));
+
+        self.explore(
+            &game.board,
+            &game.rack,
+            anchor,
+            0,
+            ExploreDir::Left,
+            VecDeque::new(),
+            current_node,
+            &mut moves,
+            String::from_utf8(suffix).unwrap_or_default(),
+            (anchor.row, anchor.col),
+        );
     }
 
-    fn explore_left(&self, board: &Board, rack: &Rack, row: usize, col: usize, tiles_placed: Vec<Tile>, current_node: CompiledAddr) {
-        if let Some(tile) = board.get_tile(row, col) {}
+    fn explore(
+        &self,
+        board: &Board,
+        rack: &Rack,
+        anchor: &Anchor,
+        offset: i8,
+        explore_dir: ExploreDir,
+        tiles_placed: VecDeque<PlayedTile>,
+        current_node: CompiledAddr,
+        moves: &mut Vec<Move>,
+        word: String,
+        word_start: (usize, usize),
+    ) {
+        let col = anchor.col as i8 + offset;
+        let row = anchor.row as i8; // todo
+        if col < 0 || col >= board.width() as i8 {
+            return;
+        }
+        let col = col as usize;
+        let row = row as usize;
+
+        if let Some(tile) = board.get_tile(row, col) {
+            println!("Board has tile '{}' at ({}, {})", tile.to_char(), row, col);
+            if let Some(next_node) = self.gaddag.can_next(current_node, tile.to_char()) {
+                let new_word = match explore_dir {
+                    ExploreDir::Left => format!("{}{}", tile.to_char(), word),
+                    ExploreDir::Right => format!("{}{}", word, tile.to_char()),
+                };
+                let new_word_start = match explore_dir {
+                    ExploreDir::Left => (row, col),
+                    ExploreDir::Right => word_start,
+                };
+
+                let mut new_tiles_placed = tiles_placed.clone();
+                match explore_dir {
+                    ExploreDir::Left => new_tiles_placed.push_front(PlayedTile::FromBoard),
+                    ExploreDir::Right => new_tiles_placed.push_back(PlayedTile::FromBoard),
+                }
+
+                self.explore(
+                    board,
+                    rack,
+                    anchor,
+                    offset + explore_dir as i8,
+                    explore_dir,
+                    new_tiles_placed,
+                    next_node,
+                    moves,
+                    new_word,
+                    new_word_start,
+                );
+            }
+            return;
+        }
+
+        if self.gaddag.is_terminal(current_node) && tiles_placed.iter().any(|t| matches!(t, PlayedTile::FromRack(_))) {
+            println!("tiles placed {:?}", tiles_placed);
+            let move_obj = Move {
+                word: word.clone(),
+                pos: word_start,
+                direction: Direction::Horizontal,
+                score: 0,
+                tiles_used: tiles_placed.iter().cloned().collect(),
+                words_formed: vec![],
+            };
+            moves.push(move_obj);
+            println!("\n FOUND MOVE: {}", word);
+        }
 
         for letter in self.gaddag.valid_children_char(current_node) {
+            // if we hit the delimiter, we start looking right instead
             if letter == super::gaddag::DELIMITER as char {
-                // if we hit the delimiter, we start looking right instead
-                println!("Hit delimiter at ({}, {}), would switch to exploring right", row, col);
-            } else {
-                println!("Can place letter '{}' at ({}, {})", letter, row, col);
+                println!("Hit delimiter at ({}, {})", row, col);
+                if let Some(delimiter_node) = self.gaddag.can_next(current_node, letter) {
+                    self.explore(
+                        board,
+                        rack,
+                        anchor,
+                        1,
+                        ExploreDir::Right,
+                        tiles_placed.clone(),
+                        delimiter_node,
+                        moves,
+                        word.clone(),
+                        word_start,
+                    );
+                }
+                continue;
+            }
+
+            println!("Can place letter '{}' at ({}, {})", letter, anchor.row, anchor.col);
+
+            // check rack
+            if let Some(tile) = rack.has_letter(letter as u8) {
+                println!("Rack has letter '{}'", tile.to_char());
+
+                // check crosschecks
+
+                println!("Placing letter '{}'", letter);
+                let mut new_rack = rack.clone();
+                new_rack.remove_tile(tile);
+                println!("Rack after removing: {:?}", new_rack);
+
+                if let Some(next_node) = self.gaddag.can_next(current_node, letter) {
+                    let mut new_tiles_placed = tiles_placed.clone();
+                    match explore_dir {
+                        ExploreDir::Left => new_tiles_placed.push_front(PlayedTile::FromRack(tile)),
+                        ExploreDir::Right => new_tiles_placed.push_back(PlayedTile::FromRack(tile)),
+                    }
+
+                    let new_word = match explore_dir {
+                        ExploreDir::Left => format!("{}{}", letter, word),
+                        ExploreDir::Right => format!("{}{}", word, letter),
+                    };
+                    let new_word_start = match explore_dir {
+                        ExploreDir::Left => (row, col),
+                        ExploreDir::Right => word_start,
+                    };
+
+                    self.explore(
+                        board,
+                        &new_rack,
+                        anchor,
+                        offset + explore_dir as i8,
+                        explore_dir,
+                        new_tiles_placed,
+                        next_node,
+                        moves,
+                        new_word,
+                        new_word_start,
+                    );
+                }
             }
         }
-        // // we look left. if there's already a tile, we must use it, no checks needed
-
-        // // additionally we set a flag to stop further exploration left when we hit the end of the prefix
     }
 }

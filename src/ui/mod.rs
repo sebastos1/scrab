@@ -9,6 +9,8 @@ pub const BACKGROUND_COLOR: Color = Color::from_hex(0x071830);
 
 pub struct UI {
     font: Option<Font>,
+    scroll_offset: usize,
+    hovered_move: Option<usize>,
 }
 
 pub fn get_window_config() -> Conf {
@@ -24,6 +26,8 @@ impl UI {
     pub async fn new() -> Self {
         Self {
             font: load_ttf_font_from_bytes(include_bytes!("../../outfit.ttf")).ok(),
+            scroll_offset: 0,
+            hovered_move: None,
         }
     }
 }

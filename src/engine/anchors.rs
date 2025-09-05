@@ -2,6 +2,18 @@ use std::collections::HashMap;
 
 use crate::{engine::moves::Direction, game::board::Board};
 
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub struct Anchor {
+    pub row: usize,
+    pub col: usize,
+}
+
+impl Anchor {
+    pub fn at(row: usize, col: usize) -> Self {
+        Self { row, col }
+    }
+}
+
 impl super::moves::MoveGenerator {
     // first find all anchor tiles:
     // empty tiles next to an existing tile, within board bounds, which have ANY valid letters
@@ -21,14 +33,14 @@ impl super::moves::MoveGenerator {
     */
 
     // finds both anchors and cross checks  from that direction
-    pub fn find_anchors(&self, board: &Board, direction: &Direction) -> (Vec<(usize, usize)>, HashMap<(usize, usize), u32>) {
+    pub fn find_anchors(&self, board: &Board, direction: &Direction) -> (Vec<Anchor>, HashMap<Anchor, u32>) {
         if board.is_empty() {
-            return (vec![(7, 7)], HashMap::new()); // todo make all allowed?
+            return (vec![Anchor::at(7, 7)], HashMap::new()); // todo make all allowed?
         }
-        let mut anchors = Vec::new();
+        let mut anchors: Vec<Anchor> = Vec::new();
 
         // bitsets for valid letters
-        let mut cross_checks: HashMap<(usize, usize), u32> = HashMap::new();
+        let mut cross_checks: HashMap<Anchor, u32> = HashMap::new();
 
         // horizontally
         for row in 0..board.height() {
@@ -45,7 +57,7 @@ impl super::moves::MoveGenerator {
                 if has_prev || has_next {
                     let mut prefix = Vec::new();
                     let mut suffix = Vec::new();
-                    anchors.push((row, col));
+                    anchors.push(Anchor::at(row, col));
 
                     match direction {
                         Direction::Vertical => {
@@ -94,7 +106,7 @@ impl super::moves::MoveGenerator {
                         }
                     }
                     if valid_letters != 0 {
-                        cross_checks.insert((row, col), valid_letters);
+                        cross_checks.insert(Anchor::at(row, col), valid_letters);
                     }
                 }
             }
