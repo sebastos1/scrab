@@ -1,10 +1,18 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tile {
     Letter(u8),
     Blank(Option<u8>),
 }
 
 impl Tile {
+    pub fn byte(self) -> u8 {
+        match self {
+            Tile::Letter(letter) => letter,
+            Tile::Blank(Some(letter)) => letter,
+            Tile::Blank(None) => b'*',
+        }
+    }
+
     pub fn to_char(self) -> char {
         match self {
             Tile::Letter(letter) => letter as char,
@@ -21,14 +29,6 @@ impl Tile {
             Some(Tile::Letter(c as u8))
         } else {
             None
-        }
-    }
-
-    pub fn to_byte(self) -> u8 {
-        match self {
-            Tile::Letter(b) => b,
-            Tile::Blank(Some(b)) => b,
-            Tile::Blank(None) => b'*',
         }
     }
 

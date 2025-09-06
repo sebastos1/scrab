@@ -60,12 +60,7 @@ impl Gaddag {
 
     ///Returns true if the given word is in the dictionary.
     ///Searches for `^input.rev()$`.
-    pub fn contains(&self, word: &str) -> bool {
-        let search_vec: Vec<u8> = (*word.chars().rev().collect::<String>().as_bytes()).to_vec();
-        self.0.contains(search_vec)
-    }
-
-    pub fn contains_u8(&self, word: &[u8]) -> bool {
+    pub fn contains(&self, word: &[u8]) -> bool {
         let search_vec: Vec<u8> = word.iter().rev().cloned().collect();
         self.0.contains(search_vec)
     }
@@ -143,28 +138,30 @@ impl Gaddag {
     }
 
     ///Attempts to follow the node in the GADDAG, and returns the next node.
-    pub fn can_next(&self, node_addr: CompiledAddr, next: char) -> Option<CompiledAddr> {
+    pub fn can_next(&self, node_addr: CompiledAddr, next: u8) -> Option<CompiledAddr> {
         let current_node = self.0.as_fst().node(node_addr);
-        for byte in next.to_string().bytes() {
-            if let Some(i) = current_node.find_input(byte) {
-                return Some(current_node.transition(i).addr);
-            }
+        if let Some(i) = current_node.find_input(next) {
+            Some(current_node.transition(i).addr)
+        } else {
+            None
         }
-        None
     }
 
     pub fn is_terminal(&self, node_addr: CompiledAddr) -> bool {
         self.0.as_fst().node(node_addr).is_final()
     }
 
-    pub fn valid_children_char(&self, node_addr: CompiledAddr) -> Vec<char> {
-        let mut valid_chars = Vec::new();
+    // holy speed
+    pub fn for_each_child<F>(&self, node_addr: CompiledAddr, mut f: F)
+    where
+        F: FnMut(u8) -> bool,
+    {
         let node = self.0.as_fst().node(node_addr);
         for i in 0..node.len() {
             let transition = node.transition(i);
-            let child_letter = transition.inp as char;
-            valid_chars.push(child_letter);
+            if !f(transition.inp) {
+                break;
+            }
         }
-        valid_chars
     }
 }

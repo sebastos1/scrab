@@ -1,13 +1,15 @@
 use crate::engine::Pos;
+use crate::game::bag::Bag;
 use crate::game::board::BOARD_TILES;
 use crate::game::board::Board;
 use crate::game::board::Multiplier;
 use crate::game::rack::Rack;
 use crate::game::tile::Tile;
+use crate::ui::MARGIN;
 use macroquad::prelude::*;
 
 pub const BOARD_SIZE: f32 = 600.0;
-pub const CELL_SIZE: f32 = BOARD_SIZE / 15.0;
+pub const CELL_SIZE: f32 = BOARD_SIZE / BOARD_TILES as f32;
 pub const TILE_SIZE: f32 = CELL_SIZE * 0.9;
 const CORNER_RADIUS: f32 = 6.0;
 
@@ -203,5 +205,84 @@ impl super::UI {
         draw_circle(x + w - r, y + r, r, color);
         draw_circle(x + r, y + h - r, r, color);
         draw_circle(x + w - r, y + h - r, r, color);
+    }
+
+    pub fn draw_bag(&self, bag: &Bag) {
+        let bag_x = MARGIN + BOARD_SIZE + 30.0;
+        let bag_y = MARGIN + 550.0;
+        let mini_tile_size = 20.0;
+        let spacing = 25.0;
+        let grid_cols = 4;
+
+        draw_text_ex(
+            &format!("Tiles left: {}", bag.tiles_left()),
+            bag_x,
+            bag_y,
+            TextParams {
+                font: self.font.as_ref(),
+                font_size: 14,
+                color: WHITE,
+                ..Default::default()
+            },
+        );
+
+        let tile_counts = bag.get_tile_counts();
+
+        let mut row = 0;
+        let mut col = 0;
+
+        for (tile, count) in tile_counts.iter() {
+            if *count == 0 {
+                continue;
+            }
+
+            let x = bag_x + col as f32 * (mini_tile_size + spacing);
+            let y = bag_y + 25.0 + row as f32 * (mini_tile_size + 8.0);
+
+            self.draw_rounded_rect(x, y, mini_tile_size, mini_tile_size, 2.0, PLACEABLE_TILE_BG);
+
+            let letter = match tile {
+                Tile::Blank(_) => "*",
+                Tile::Letter(l) => {
+                    let c = *l as char;
+                    if c.is_ascii_alphabetic() { &c.to_string() } else { "?" }
+                }
+            };
+
+            let font_size = mini_tile_size * 0.6;
+            let text_dims = measure_text(letter, self.font.as_ref(), font_size as u16, 1.0);
+            let text_x = x + (mini_tile_size - text_dims.width) / 2.0;
+            let text_y = y + (mini_tile_size + text_dims.height) / 2.0;
+
+            draw_text_ex(
+                letter,
+                text_x,
+                text_y,
+                TextParams {
+                    font: self.font.as_ref(),
+                    font_size: font_size as u16,
+                    color: BLACK,
+                    ..Default::default()
+                },
+            );
+
+            draw_text_ex(
+                &count.to_string(),
+                x + mini_tile_size + 3.0,
+                y + mini_tile_size - 2.0,
+                TextParams {
+                    font: self.font.as_ref(),
+                    font_size: 12,
+                    color: WHITE,
+                    ..Default::default()
+                },
+            );
+
+            col += 1;
+            if col >= grid_cols {
+                col = 0;
+                row += 1;
+            }
+        }
     }
 }

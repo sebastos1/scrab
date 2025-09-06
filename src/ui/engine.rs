@@ -1,15 +1,18 @@
 use macroquad::prelude::*;
 
 use crate::{
-    engine::Pos,
-    engine::moves::{Direction, Move, PlayedTile},
+    engine::{
+        Pos,
+        moves::{Direction, Move, PlayedTile},
+    },
+    game::board::BOARD_TILES,
     ui::{MARGIN, board::BOARD_SIZE},
 };
 
 impl super::UI {
-    pub fn draw_move_list(&mut self, moves: &[Move]) {
-        let mut moves: Vec<_> = moves.iter().collect();
-        moves.sort_by(|a, b| b.rack_tiles_count().cmp(&a.rack_tiles_count()));
+    pub fn draw_move_list(&mut self, moves: &[Move]) -> Option<usize> {
+        let mut moves: Vec<_> = moves.iter().enumerate().collect();
+        moves.sort_by(|a, b| b.1.rack_tiles_count().cmp(&a.1.rack_tiles_count()));
 
         let moves_x = MARGIN + BOARD_SIZE + 30.0;
         let moves_y = MARGIN;
@@ -54,10 +57,12 @@ impl super::UI {
         }
 
         let mouse_pos = mouse_position();
+        let mouse_clicked = is_mouse_button_pressed(MouseButton::Left);
         self.hovered_move = None;
+        let mut clicked_move = None;
 
         let end_idx = (self.scroll_offset + visible_moves).min(moves.len());
-        for (display_idx, mv) in moves[self.scroll_offset..end_idx].iter().enumerate() {
+        for (display_idx, (original_idx, mv)) in moves[self.scroll_offset..end_idx].iter().enumerate() {
             let actual_idx = self.scroll_offset + display_idx;
             let y = moves_y + 40.0 + display_idx as f32 * line_height;
 
@@ -77,6 +82,11 @@ impl super::UI {
                     3.0,
                     Color::new(0.3, 0.3, 0.3, 0.6),
                 );
+
+                if mouse_clicked {
+                    clicked_move = Some(*original_idx);
+                    self.scroll_offset = 0;
+                }
             }
 
             let text_color = if is_hovered { Color::new(1.0, 0.9, 0.4, 1.0) } else { WHITE };
@@ -102,10 +112,12 @@ impl super::UI {
         }
 
         if let Some(idx) = self.hovered_move {
-            if let Some(mv) = moves.get(idx) {
+            if let Some((_, mv)) = moves.get(idx) {
                 self.draw_move_preview(mv);
             }
         }
+
+        clicked_move
     }
 
     pub fn draw_move_preview(&self, mv: &Move) {
@@ -116,7 +128,7 @@ impl super::UI {
         };
 
         let mut tile_offset = 0;
-        for i in 0..15 {
+        for i in 0..BOARD_TILES {
             if mv.tiles_used & (1 << i) != 0 {
                 let (row, col) = match mv.direction {
                     Direction::Horizontal => (start_pos.row, start_pos.col + tile_offset),
