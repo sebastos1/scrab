@@ -6,7 +6,7 @@ use board::Board;
 use rack::Rack;
 use tile::Tile;
 
-use crate::util::Pos;
+use crate::engine::Pos;
 
 pub struct Game {
     pub board: board::Board,
@@ -15,21 +15,14 @@ pub struct Game {
 
 pub fn init() -> Game {
     let mut board = Board::new();
-    let rack = Rack::new(vec![
-        Tile::T,
-        Tile::S, // haii
-        Tile::R,
-        Tile::S,
-        Tile::E,
-        Tile::Blank,
-    ]);
 
-    board.place_tile(Pos::new(7, 4), Tile::S);
-    board.place_tile(Pos::new(7, 6), Tile::R);
-    board.place_tile(Pos::new(7, 7), Tile::A);
-    board.place_tile(Pos::new(7, 8), Tile::I);
-    board.place_tile(Pos::new(7, 9), Tile::N);
-    board.place_tile(Pos::new(6, 10), Tile::A);
+    let rack = ['T', 'S', 'R', 'S', 'E', '*', 'G'].iter().map(|&c| Tile::from_char(c).unwrap()).collect();
+    let rack = Rack::new(rack);
+
+    let tiles = [(7, 4, 'S'), (7, 6, 'R'), (7, 7, 'A'), (7, 8, 'I'), (7, 9, 'N'), (6, 10, 'A')];
+    for (row, col, tile) in tiles {
+        board.place_tile(Pos { row, col }, Tile::from_char(tile).unwrap());
+    }
 
     println!("Rack tiles: {:?}", rack.tiles());
 

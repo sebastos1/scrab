@@ -1,13 +1,16 @@
 use macroquad::prelude::*;
 
 use crate::{
+    engine::Pos,
     engine::moves::{Direction, Move, PlayedTile},
     ui::{MARGIN, board::BOARD_SIZE},
-    util::Pos,
 };
 
 impl super::UI {
     pub fn draw_move_list(&mut self, moves: &[Move]) {
+        let mut moves: Vec<_> = moves.iter().collect();
+        moves.sort_by(|a, b| b.rack_tiles_count().cmp(&a.rack_tiles_count()));
+
         let moves_x = MARGIN + BOARD_SIZE + 30.0;
         let moves_y = MARGIN;
         let line_height = 25.0;
@@ -83,8 +86,10 @@ impl super::UI {
                 Direction::Vertical => "↓",
             };
 
+            let word = mv.get_word_string();
+
             draw_text_ex(
-                &format!("{} {} ({}pts)", mv.word, direction_arrow, mv.score),
+                &format!("{} {} ({}pts)", word, direction_arrow, mv.score),
                 moves_x,
                 y,
                 TextParams {
@@ -99,56 +104,31 @@ impl super::UI {
         if let Some(idx) = self.hovered_move {
             if let Some(mv) = moves.get(idx) {
                 self.draw_move_preview(mv);
-                self.draw_formed_words(mv);
             }
         }
     }
 
     pub fn draw_move_preview(&self, mv: &Move) {
-        for (i, played_tile) in mv.tiles_used.iter().enumerate() {
-            let (row, col) = match mv.direction {
-                Direction::Horizontal => (mv.pos.row, mv.pos.col + i),
-                Direction::Vertical => (mv.pos.row + i, mv.pos.col),
-            };
+        let word_start_idx = mv.tiles_used.trailing_zeros() as usize;
+        let start_pos = match mv.direction {
+            Direction::Horizontal => Pos::new(mv.pos.row, word_start_idx),
+            Direction::Vertical => Pos::new(word_start_idx, mv.pos.col),
+        };
 
-            if row < 15 && col < 15 {
-                if let PlayedTile::FromRack(tile) = played_tile {
+        let mut tile_offset = 0;
+        for i in 0..15 {
+            if mv.tiles_used & (1 << i) != 0 {
+                let (row, col) = match mv.direction {
+                    Direction::Horizontal => (start_pos.row, start_pos.col + tile_offset),
+                    Direction::Vertical => (start_pos.row + tile_offset, start_pos.col),
+                };
+
+                if let PlayedTile::FromRack(tile) = mv.tiles_data[i].1 {
                     let (tile_x, tile_y) = self.tile_position(Pos::new(row, col));
-                    self.draw_placeable_tile(tile_x, tile_y, *tile, true);
+                    self.draw_placeable_tile(tile_x, tile_y, tile, true);
                 }
-            }
-        }
-    }
 
-    pub fn draw_formed_words(&self, mv: &Move) {
-        if !mv.words_formed.is_empty() {
-            let debug_x = MARGIN;
-            let debug_y = MARGIN + BOARD_SIZE + 120.0;
-
-            draw_text_ex(
-                "Words formed:",
-                debug_x,
-                debug_y,
-                TextParams {
-                    font: self.font.as_ref(),
-                    font_size: 14,
-                    color: WHITE,
-                    ..Default::default()
-                },
-            );
-
-            for (i, word) in mv.words_formed.iter().enumerate() {
-                draw_text_ex(
-                    &format!("• {}", word),
-                    debug_x + (i % 4) as f32 * 120.0,
-                    debug_y + 20.0 + (i / 4) as f32 * 20.0,
-                    TextParams {
-                        font: self.font.as_ref(),
-                        font_size: 13,
-                        color: Color::new(0.0, 1.0, 0.0, 1.0),
-                        ..Default::default()
-                    },
-                );
+                tile_offset += 1;
             }
         }
     }

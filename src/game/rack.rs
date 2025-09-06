@@ -1,75 +1,88 @@
-use std::collections::HashMap;
-
 use super::tile::Tile;
 
 #[derive(Debug, Clone)]
 pub struct Rack {
-    tiles: Vec<Tile>,
+    // 0-25 A-Z, 26 blank
+    tiles: [u8; 27],
 }
 
 impl Rack {
-    pub fn new(tiles: Vec<Tile>) -> Self {
+    pub fn new(tile_vec: Vec<Tile>) -> Self {
+        let mut tiles = [0u8; 27];
+
+        for tile in tile_vec {
+            match tile {
+                Tile::Letter(c) => {
+                    tiles[(c - b'A') as usize] += 1;
+                }
+                Tile::Blank(_) => {
+                    tiles[26] += 1;
+                }
+            }
+        }
+
         Self { tiles }
     }
 
-    pub fn tiles(&self) -> &[Tile] {
-        &self.tiles
+    pub fn tiles(&self) -> Vec<Tile> {
+        let mut tiles = Vec::new();
+
+        for (i, &count) in self.tiles[..26].iter().enumerate() {
+            for _ in 0..count {
+                tiles.push(Tile::Letter(b'A' + i as u8));
+            }
+        }
+
+        for _ in 0..self.tiles[26] {
+            tiles.push(Tile::Blank(None));
+        }
+
+        tiles
     }
 
     pub fn has_letter(&self, letter: u8) -> Option<Tile> {
-        for &tile in &self.tiles {
-            if tile.to_byte() == letter || tile == Tile::Blank {
-                return Some(tile);
-            }
+        let idx = (letter - b'A') as usize;
+
+        // letter
+        if idx < 26 && self.tiles[idx] > 0 {
+            return Some(Tile::Letter(letter));
         }
+
+        // blank
+        if self.tiles[26] > 0 {
+            return Some(Tile::Blank(None));
+        }
+
         None
     }
 
     pub fn add_tile(&mut self, tile: Tile) {
-        self.tiles.push(tile);
+        match tile {
+            Tile::Letter(c) => {
+                self.tiles[(c - b'A') as usize] += 1;
+            }
+            Tile::Blank(_) => {
+                self.tiles[26] += 1;
+            }
+        }
     }
 
     pub fn remove_tile(&mut self, tile: Tile) -> bool {
-        if let Some(pos) = self.tiles.iter().position(|&t| t == tile) {
-            self.tiles.remove(pos);
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn remove_tiles(&mut self, used_tiles: &[Tile]) -> bool {
-        let mut temp_rack = self.tiles.clone();
-
-        for &tile in used_tiles {
-            if let Some(pos) = temp_rack.iter().position(|&t| t == tile) {
-                temp_rack.remove(pos);
-            } else {
-                return false;
+        match tile {
+            Tile::Letter(c) => {
+                let idx = (c - b'A') as usize;
+                if self.tiles[idx] > 0 {
+                    self.tiles[idx] -= 1;
+                    return true;
+                }
+            }
+            Tile::Blank(_) => {
+                if self.tiles[26] > 0 {
+                    self.tiles[26] -= 1;
+                    return true;
+                }
             }
         }
-
-        self.tiles = temp_rack;
-        true
-    }
-
-    pub fn to_bits(&self) -> u32 {
-        let mut bits = 0u32;
-        for tile in self.tiles() {
-            if *tile != Tile::Blank {
-                let ch = tile.to_byte();
-                bits |= 1 << (ch - b'A');
-            }
-        }
-        bits
-    }
-
-    pub fn to_counts(&self) -> HashMap<u8, i32> {
-        let mut counts = HashMap::new();
-        for tile in self.tiles() {
-            let ch = tile.to_byte();
-            *counts.entry(ch).or_insert(0) += 1;
-        }
-        counts
+        false
     }
 }

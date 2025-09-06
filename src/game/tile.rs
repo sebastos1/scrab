@@ -1,174 +1,50 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tile {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
-    J,
-    K,
-    L,
-    M,
-    N,
-    O,
-    P,
-    Q,
-    R,
-    S,
-    T,
-    U,
-    V,
-    W,
-    X,
-    Y,
-    Z,
-    Blank,
+    Letter(u8),
+    Blank(Option<u8>),
 }
 
 impl Tile {
-    pub fn points(self) -> u8 {
-        match self {
-            Tile::A | Tile::E | Tile::I | Tile::L | Tile::N | Tile::O | Tile::R | Tile::S | Tile::T | Tile::U => 1,
-            Tile::D | Tile::G => 2,
-            Tile::B | Tile::C | Tile::M | Tile::P => 3,
-            Tile::F | Tile::H | Tile::V | Tile::W | Tile::Y => 4,
-            Tile::K => 5,
-            Tile::J | Tile::X => 8,
-            Tile::Q | Tile::Z => 10,
-            Tile::Blank => 0,
-        }
-    }
-
     pub fn to_char(self) -> char {
         match self {
-            Tile::A => 'A',
-            Tile::B => 'B',
-            Tile::C => 'C',
-            Tile::D => 'D',
-            Tile::E => 'E',
-            Tile::F => 'F',
-            Tile::G => 'G',
-            Tile::H => 'H',
-            Tile::I => 'I',
-            Tile::J => 'J',
-            Tile::K => 'K',
-            Tile::L => 'L',
-            Tile::M => 'M',
-            Tile::N => 'N',
-            Tile::O => 'O',
-            Tile::P => 'P',
-            Tile::Q => 'Q',
-            Tile::R => 'R',
-            Tile::S => 'S',
-            Tile::T => 'T',
-            Tile::U => 'U',
-            Tile::V => 'V',
-            Tile::W => 'W',
-            Tile::X => 'X',
-            Tile::Y => 'Y',
-            Tile::Z => 'Z',
-            Tile::Blank => '*',
+            Tile::Letter(letter) => letter as char,
+            Tile::Blank(Some(letter)) => letter as char,
+            Tile::Blank(None) => '*',
         }
     }
 
     pub fn from_char(c: char) -> Option<Self> {
-        match c.to_ascii_uppercase() {
-            'A' => Some(Tile::A),
-            'B' => Some(Tile::B),
-            'C' => Some(Tile::C),
-            'D' => Some(Tile::D),
-            'E' => Some(Tile::E),
-            'F' => Some(Tile::F),
-            'G' => Some(Tile::G),
-            'H' => Some(Tile::H),
-            'I' => Some(Tile::I),
-            'J' => Some(Tile::J),
-            'K' => Some(Tile::K),
-            'L' => Some(Tile::L),
-            'M' => Some(Tile::M),
-            'N' => Some(Tile::N),
-            'O' => Some(Tile::O),
-            'P' => Some(Tile::P),
-            'Q' => Some(Tile::Q),
-            'R' => Some(Tile::R),
-            'S' => Some(Tile::S),
-            'T' => Some(Tile::T),
-            'U' => Some(Tile::U),
-            'V' => Some(Tile::V),
-            'W' => Some(Tile::W),
-            'X' => Some(Tile::X),
-            'Y' => Some(Tile::Y),
-            'Z' => Some(Tile::Z),
-            '*' => Some(Tile::Blank),
-            _ => None,
+        let c = c.to_ascii_uppercase();
+        if c == '*' {
+            Some(Tile::Blank(None))
+        } else if ('A'..='Z').contains(&c) {
+            Some(Tile::Letter(c as u8))
+        } else {
+            None
         }
     }
 
-    pub fn to_byte(&self) -> u8 {
+    pub fn to_byte(self) -> u8 {
         match self {
-            Tile::A => b'A',
-            Tile::B => b'B',
-            Tile::C => b'C',
-            Tile::D => b'D',
-            Tile::E => b'E',
-            Tile::F => b'F',
-            Tile::G => b'G',
-            Tile::H => b'H',
-            Tile::I => b'I',
-            Tile::J => b'J',
-            Tile::K => b'K',
-            Tile::L => b'L',
-            Tile::M => b'M',
-            Tile::N => b'N',
-            Tile::O => b'O',
-            Tile::P => b'P',
-            Tile::Q => b'Q',
-            Tile::R => b'R',
-            Tile::S => b'S',
-            Tile::T => b'T',
-            Tile::U => b'U',
-            Tile::V => b'V',
-            Tile::W => b'W',
-            Tile::X => b'X',
-            Tile::Y => b'Y',
-            Tile::Z => b'Z',
-            Tile::Blank => b'*',
+            Tile::Letter(b) => b,
+            Tile::Blank(Some(b)) => b,
+            Tile::Blank(None) => b'*',
         }
     }
 
-    pub fn from_byte(ch: u8) -> Tile {
-        match ch {
-            b'A' => Tile::A,
-            b'B' => Tile::B,
-            b'C' => Tile::C,
-            b'D' => Tile::D,
-            b'E' => Tile::E,
-            b'F' => Tile::F,
-            b'G' => Tile::G,
-            b'H' => Tile::H,
-            b'I' => Tile::I,
-            b'J' => Tile::J,
-            b'K' => Tile::K,
-            b'L' => Tile::L,
-            b'M' => Tile::M,
-            b'N' => Tile::N,
-            b'O' => Tile::O,
-            b'P' => Tile::P,
-            b'Q' => Tile::Q,
-            b'R' => Tile::R,
-            b'S' => Tile::S,
-            b'T' => Tile::T,
-            b'U' => Tile::U,
-            b'V' => Tile::V,
-            b'W' => Tile::W,
-            b'X' => Tile::X,
-            b'Y' => Tile::Y,
-            b'Z' => Tile::Z,
-            _ => Tile::Blank,
+    pub fn points(self) -> u8 {
+        match self {
+            Tile::Letter(letter) => match letter {
+                b'A' | b'E' | b'I' | b'L' | b'N' | b'O' | b'R' | b'S' | b'T' | b'U' => 1,
+                b'D' | b'G' => 2,
+                b'B' | b'C' | b'M' | b'P' => 3,
+                b'F' | b'H' | b'V' | b'W' | b'Y' => 4,
+                b'K' => 5,
+                b'J' | b'X' => 8,
+                b'Q' | b'Z' => 10,
+                _ => 0,
+            },
+            Tile::Blank(_) => 0,
         }
     }
 }

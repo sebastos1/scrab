@@ -1,4 +1,4 @@
-use crate::util::Pos;
+use crate::engine::Pos;
 
 use super::tile::Tile;
 

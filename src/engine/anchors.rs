@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use crate::{
+    engine::Pos,
     engine::moves::Direction,
     game::board::{BOARD_TILES, Board},
-    util::Pos,
 };
 
 pub type CrossChecks = [[u32; BOARD_TILES]; BOARD_TILES];

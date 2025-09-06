@@ -1,9 +1,9 @@
+use crate::engine::Pos;
 use crate::game::board::BOARD_TILES;
 use crate::game::board::Board;
 use crate::game::board::Multiplier;
 use crate::game::rack::Rack;
 use crate::game::tile::Tile;
-use crate::util::Pos;
 use macroquad::prelude::*;
 
 pub const BOARD_SIZE: f32 = 600.0;
@@ -142,10 +142,16 @@ impl super::UI {
 
     fn draw_tile_content(&self, x: f32, y: f32, tile: Tile, text_color: Color) {
         let letter = match tile {
-            Tile::Blank => "",
-            _ => {
-                let letter_char = format!("{:?}", tile);
-                Box::leak(letter_char.into_boxed_str())
+            Tile::Blank(letter) => match letter {
+                Some(l) => {
+                    let c = l as char;
+                    if c.is_ascii_alphabetic() { &c.to_string() } else { "?" }
+                }
+                None => "*",
+            },
+            Tile::Letter(letter) => {
+                let c = letter as char;
+                if c.is_ascii_alphabetic() { &c.to_string() } else { "?" }
             }
         };
 
