@@ -106,18 +106,21 @@ impl super::UI {
     }
 
     fn draw_multiplier_tile(&self, x: f32, y: f32, board: &Board, pos: Pos) {
-        let (color, text) = match board.get_multiplier(pos) {
-            Multiplier::TripleWord => (TW_COLOR, "TW"),
-            Multiplier::DoubleWord => (DW_COLOR, "DW"),
-            Multiplier::TripleLetter => (TL_COLOR, "TL"),
-            Multiplier::DoubleLetter => (DL_COLOR, "DL"),
-            Multiplier::Normal => {
-                if pos.row == 7 && pos.col == 7 {
-                    (START_TILE_COLOR, "★")
-                } else {
-                    (BLANK_TILE_COLOR, "")
+        let (color, text) = if let Some(multi) = board.get_multiplier(pos) {
+            match multi {
+                Multiplier::TripleWord => (TW_COLOR, "TW"),
+                Multiplier::DoubleWord => {
+                    if pos.row == 7 && pos.col == 7 {
+                        (START_TILE_COLOR, "star")
+                    } else {
+                        (DW_COLOR, "DW")
+                    }
                 }
+                Multiplier::TripleLetter => (TL_COLOR, "TL"),
+                Multiplier::DoubleLetter => (DL_COLOR, "DL"),
             }
+        } else {
+            (BLANK_TILE_COLOR, "")
         };
 
         self.draw_rounded_rect(x, y, TILE_SIZE, TILE_SIZE, CORNER_RADIUS, color);
@@ -143,27 +146,16 @@ impl super::UI {
     }
 
     fn draw_tile_content(&self, x: f32, y: f32, tile: Tile, text_color: Color) {
-        let letter = match tile {
-            Tile::Blank(letter) => match letter {
-                Some(l) => {
-                    let c = l as char;
-                    if c.is_ascii_alphabetic() { &c.to_string() } else { "?" }
-                }
-                None => "*",
-            },
-            Tile::Letter(letter) => {
-                let c = letter as char;
-                if c.is_ascii_alphabetic() { &c.to_string() } else { "?" }
-            }
-        };
+        let letter_char = tile.to_char();
+        let letter = letter_char.to_string();
 
         let font_size = TILE_SIZE * 0.6;
-        let text_dims = measure_text(letter, self.font.as_ref(), font_size as u16, 1.0);
+        let text_dims = measure_text(&letter, self.font.as_ref(), font_size as u16, 1.0);
         let text_x = x + (TILE_SIZE - text_dims.width) / 2.0;
         let text_y = y + (TILE_SIZE + text_dims.height) / 2.0;
 
         draw_text_ex(
-            letter,
+            &letter,
             text_x,
             text_y,
             TextParams {
@@ -175,26 +167,23 @@ impl super::UI {
         );
 
         let points = tile.points().to_string();
+        if points != "0" {
+            let small_font_size = TILE_SIZE * 0.25;
+            let points_x = x + TILE_SIZE - TILE_SIZE * 0.25;
+            let points_y = y + TILE_SIZE - TILE_SIZE * 0.1;
 
-        if points == "0" {
-            return;
+            draw_text_ex(
+                &points,
+                points_x,
+                points_y,
+                TextParams {
+                    font: self.font.as_ref(),
+                    font_size: small_font_size as u16,
+                    color: text_color,
+                    ..Default::default()
+                },
+            );
         }
-
-        let small_font_size = TILE_SIZE * 0.25;
-        let points_x = x + TILE_SIZE - TILE_SIZE * 0.25;
-        let points_y = y + TILE_SIZE - TILE_SIZE * 0.1;
-
-        draw_text_ex(
-            &points,
-            points_x,
-            points_y,
-            TextParams {
-                font: self.font.as_ref(),
-                font_size: small_font_size as u16,
-                color: text_color,
-                ..Default::default()
-            },
-        );
     }
 
     // magic rounded rect
@@ -241,21 +230,16 @@ impl super::UI {
 
             self.draw_rounded_rect(x, y, mini_tile_size, mini_tile_size, 2.0, PLACEABLE_TILE_BG);
 
-            let letter = match tile {
-                Tile::Blank(_) => "*",
-                Tile::Letter(l) => {
-                    let c = *l as char;
-                    if c.is_ascii_alphabetic() { &c.to_string() } else { "?" }
-                }
-            };
+            let letter_char = tile.to_char();
+            let letter = letter_char.to_string();
 
             let font_size = mini_tile_size * 0.6;
-            let text_dims = measure_text(letter, self.font.as_ref(), font_size as u16, 1.0);
+            let text_dims = measure_text(&letter, self.font.as_ref(), font_size as u16, 1.0);
             let text_x = x + (mini_tile_size - text_dims.width) / 2.0;
             let text_y = y + (mini_tile_size + text_dims.height) / 2.0;
 
             draw_text_ex(
-                letter,
+                &letter,
                 text_x,
                 text_y,
                 TextParams {

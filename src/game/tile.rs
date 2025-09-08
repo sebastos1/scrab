@@ -1,40 +1,69 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Tile {
-    Letter(u8),
-    Blank(Option<u8>),
-}
+pub struct Tile(pub u8);
 
 impl Tile {
+    const EMPTY: u8 = 0;
+    const BLANK_BIT: u8 = 0x80; // 10000000
+    const LETTER_MASK: u8 = 0x1F; // 00011111
+
+    pub fn empty() -> Self {
+        Self(Self::EMPTY)
+    }
+
+    pub fn letter(letter: u8) -> Self {
+        Self(letter - b'A' + 1)
+    }
+
+    pub fn blank(letter: Option<u8>) -> Self {
+        match letter {
+            Some(l) => Self((l - b'A' + 1) | Self::BLANK_BIT),
+            None => Self(Self::BLANK_BIT),
+        }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.0 == Self::EMPTY
+    }
+
+    pub fn is_blank(self) -> bool {
+        (self.0 & Self::BLANK_BIT) != 0
+    }
+
+    pub fn is_some(self) -> bool {
+        !self.is_empty()
+    }
+
     pub fn byte(self) -> u8 {
-        match self {
-            Tile::Letter(letter) => letter,
-            Tile::Blank(Some(letter)) => letter,
-            Tile::Blank(None) => b'*',
+        if self.is_empty() {
+            0
+        } else if self.is_blank() {
+            let letter_bits = self.0 & Self::LETTER_MASK;
+            if letter_bits == 0 { b'*' } else { letter_bits + b'A' - 1 }
+        } else {
+            (self.0 & Self::LETTER_MASK) + b'A' - 1
         }
     }
 
     pub fn to_char(self) -> char {
-        match self {
-            Tile::Letter(letter) => letter as char,
-            Tile::Blank(Some(letter)) => letter as char,
-            Tile::Blank(None) => '*',
-        }
+        self.byte() as char
     }
 
-    pub fn from_char(c: char) -> Option<Self> {
-        let c = c.to_ascii_uppercase();
+    pub fn from_char(c: char) -> Self {
         if c == '*' {
-            Some(Tile::Blank(None))
-        } else if ('A'..='Z').contains(&c) {
-            Some(Tile::Letter(c as u8))
+            Self::blank(None)
+        } else if c.is_ascii_alphabetic() {
+            Self::letter(c.to_ascii_uppercase() as u8)
         } else {
-            None
+            Self::empty()
         }
     }
 
     pub fn points(self) -> u8 {
-        match self {
-            Tile::Letter(letter) => match letter {
+        if self.is_empty() || self.is_blank() {
+            0
+        } else {
+            let letter = self.byte();
+            match letter {
                 b'A' | b'E' | b'I' | b'L' | b'N' | b'O' | b'R' | b'S' | b'T' | b'U' => 1,
                 b'D' | b'G' => 2,
                 b'B' | b'C' | b'M' | b'P' => 3,
@@ -43,8 +72,7 @@ impl Tile {
                 b'J' | b'X' => 8,
                 b'Q' | b'Z' => 10,
                 _ => 0,
-            },
-            Tile::Blank(_) => 0,
+            }
         }
     }
 }

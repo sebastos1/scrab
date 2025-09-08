@@ -1,88 +1,123 @@
 use super::tile::Tile;
 
+pub const RACK_TILES: usize = 7;
+
 #[derive(Debug, Clone)]
 pub struct Rack {
-    // 0-25 A-Z, 26 blank
-    tiles: [u8; 27],
+    pub tiles: [Tile; RACK_TILES],
+    pub count: u8,
+    pub mask: u32,
 }
 
 impl Rack {
     pub fn new(tile_vec: Vec<Tile>) -> Self {
-        let mut tiles = [0u8; 27];
+        let mut tiles = [Tile::empty(); RACK_TILES];
+        let count = tile_vec.len().min(RACK_TILES) as u8;
+        let mut mask = 0u32;
 
-        for tile in tile_vec {
-            match tile {
-                Tile::Letter(c) => {
-                    tiles[(c - b'A') as usize] += 1;
-                }
-                Tile::Blank(_) => {
-                    tiles[26] += 1;
+        for (i, tile) in tile_vec.into_iter().take(RACK_TILES).enumerate() {
+            tiles[i] = tile;
+            if !tile.is_blank() {
+                mask |= 1 << (tile.byte() - b'A');
+            }
+        }
+
+        Self { tiles, count, mask }
+    }
+
+    pub fn tiles(&self) -> &[Tile] {
+        unsafe {
+            // count is always <= RACK_TILES
+            self.tiles.get_unchecked(..self.count as usize)
+        }
+    }
+
+    pub fn take_tile(&mut self, letter: u8) -> Option<Tile> {
+        if letter >= b'A' && letter <= b'Z' {
+            let bit = 1u32 << (letter - b'A');
+            if (self.mask & bit) != 0 {
+                for i in 0..self.count as usize {
+                    if self.tiles[i].byte() == letter && !self.tiles[i].is_blank() {
+                        let tile = self.tiles[i];
+                        self.remove_at(i);
+                        return Some(tile);
+                    }
                 }
             }
         }
 
-        Self { tiles }
-    }
-
-    pub fn tiles(&self) -> Vec<Tile> {
-        let mut tiles = Vec::new();
-
-        for (i, &count) in self.tiles[..26].iter().enumerate() {
-            for _ in 0..count {
-                tiles.push(Tile::Letter(b'A' + i as u8));
+        for i in 0..self.count as usize {
+            if self.tiles[i].is_blank() && self.tiles[i].byte() == b'*' {
+                self.remove_at(i);
+                return Some(Tile::blank(Some(letter)));
             }
-        }
-
-        for _ in 0..self.tiles[26] {
-            tiles.push(Tile::Blank(None));
-        }
-
-        tiles
-    }
-
-    pub fn has_letter(&self, letter: u8) -> Option<Tile> {
-        let idx = (letter - b'A') as usize;
-
-        // letter
-        if idx < 26 && self.tiles[idx] > 0 {
-            return Some(Tile::Letter(letter));
-        }
-
-        // blank
-        if self.tiles[26] > 0 {
-            return Some(Tile::Blank(None));
         }
 
         None
     }
 
     pub fn add_tile(&mut self, tile: Tile) {
-        match tile {
-            Tile::Letter(c) => {
-                self.tiles[(c - b'A') as usize] += 1;
-            }
-            Tile::Blank(_) => {
-                self.tiles[26] += 1;
-            }
+        if self.count < RACK_TILES as u8 {
+            let rack_tile = if tile.is_blank() {
+                Tile::blank(None)
+            } else {
+                self.mask |= 1 << (tile.byte() - b'A');
+                tile
+            };
+            self.tiles[self.count as usize] = rack_tile;
+            self.count += 1;
         }
     }
 
     pub fn remove_tile(&mut self, tile: Tile) -> bool {
-        match tile {
-            Tile::Letter(c) => {
-                let idx = (c - b'A') as usize;
-                if self.tiles[idx] > 0 {
-                    self.tiles[idx] -= 1;
+        let count = self.count as usize;
+        if tile.is_blank() {
+            for i in 0..count {
+                if self.tiles[i].is_blank() {
+                    self.remove_at(i);
                     return true;
                 }
             }
-            Tile::Blank(_) => {
-                if self.tiles[26] > 0 {
-                    self.tiles[26] -= 1;
+        } else {
+            let letter = tile.byte();
+            if letter >= b'A' && letter <= b'Z' {
+                let bit = 1u32 << (letter - b'A');
+                if (self.mask & bit) == 0 {
+                    return false;
+                }
+            }
+
+            for i in 0..count {
+                if self.tiles[i] == tile {
+                    self.remove_at(i);
                     return true;
                 }
             }
         }
         false
+    }
+
+    fn remove_at(&mut self, index: usize) {
+        let last_idx = (self.count - 1) as usize;
+        let removed = self.tiles[index];
+        if !removed.is_blank() && removed.byte() >= b'A' && removed.byte() <= b'Z' {
+            let letter = removed.byte();
+            let mut found_another = false;
+            for i in 0..self.count as usize {
+                if i != index && self.tiles[i].byte() == letter && !self.tiles[i].is_blank() {
+                    found_another = true;
+                    break;
+                }
+            }
+            if !found_another {
+                self.mask &= !(1 << (letter - b'A'));
+            }
+        }
+
+        if index != last_idx {
+            self.tiles[index] = self.tiles[last_idx];
+        }
+        self.tiles[last_idx] = Tile::empty();
+        self.count -= 1;
     }
 }

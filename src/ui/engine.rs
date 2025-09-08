@@ -12,7 +12,10 @@ use crate::{
 impl super::UI {
     pub fn draw_move_list(&mut self, moves: &[Move]) -> Option<usize> {
         let mut moves: Vec<_> = moves.iter().enumerate().collect();
-        moves.sort_by(|a, b| b.1.rack_tiles_count().cmp(&a.1.rack_tiles_count()));
+        // moves.sort_by(|a, b| b.1.rack_tiles_count().cmp(&a.1.rack_tiles_count()));
+
+        // sort by score instead
+        moves.sort_by(|a, b| b.1.score.cmp(&a.1.score));
 
         let moves_x = MARGIN + BOARD_SIZE + 30.0;
         let moves_y = MARGIN;
@@ -121,7 +124,7 @@ impl super::UI {
     }
 
     pub fn draw_move_preview(&self, mv: &Move) {
-        let word_start_idx = mv.tiles_used.trailing_zeros() as usize;
+        let word_start_idx = mv.used_bits.trailing_zeros() as usize;
         let start_pos = match mv.direction {
             Direction::Horizontal => Pos::new(mv.pos.row, word_start_idx),
             Direction::Vertical => Pos::new(word_start_idx, mv.pos.col),
@@ -129,13 +132,13 @@ impl super::UI {
 
         let mut tile_offset = 0;
         for i in 0..BOARD_TILES {
-            if mv.tiles_used & (1 << i) != 0 {
+            if mv.used_bits & (1 << i) != 0 {
                 let (row, col) = match mv.direction {
                     Direction::Horizontal => (start_pos.row, start_pos.col + tile_offset),
                     Direction::Vertical => (start_pos.row + tile_offset, start_pos.col),
                 };
 
-                if let PlayedTile::FromRack(tile) = mv.tiles_data[i].1 {
+                if let Some(PlayedTile::FromRack(tile)) = mv.tiles_data[i].1 {
                     let (tile_x, tile_y) = self.tile_position(Pos::new(row, col));
                     self.draw_placeable_tile(tile_x, tile_y, tile, true);
                 }

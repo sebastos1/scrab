@@ -29,11 +29,10 @@ async fn main() {
 
         if board_updated {
             let move_generator = MoveGenerator::new(game.board.clone(), game.racks[game.current_player].clone());
-            let start = std::time::Instant::now();
             moves = move_generator.generate_moves();
-            let elapsed = start.elapsed();
-            println!("{} moves in {:.2?}", moves.len(), elapsed);
             board_updated = false;
+
+            println!("playser scores: {:?}", game.scores);
         }
 
         if let Some(move_idx) = ui.draw_move_list(&moves) {

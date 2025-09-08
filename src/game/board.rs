@@ -1,12 +1,12 @@
+use super::tile::Tile;
 use crate::engine::Pos;
 
-use super::tile::Tile;
-
 pub const BOARD_TILES: usize = 15;
+pub const BOARD_LENGTH: usize = BOARD_TILES * BOARD_TILES;
+// pub const START_POS: Pos = Pos { row: 7, col: 7 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Multiplier {
-    Normal,
     DoubleLetter,
     TripleLetter,
     DoubleWord,
@@ -15,16 +15,16 @@ pub enum Multiplier {
 
 #[derive(Debug, Clone)]
 pub struct Board {
-    grid: [[Option<Tile>; BOARD_TILES]; BOARD_TILES],
-    multipliers: [[Multiplier; BOARD_TILES]; BOARD_TILES],
+    grid_2d: [[Tile; BOARD_TILES]; BOARD_TILES],
+    multipliers: [[Option<Multiplier>; BOARD_TILES]; BOARD_TILES],
 }
 
 impl Board {
     pub fn new() -> Self {
-        let mut multipliers = [[Multiplier::Normal; BOARD_TILES]; BOARD_TILES];
+        let mut multipliers = [[None; BOARD_TILES]; BOARD_TILES];
         let triple_word = [(0, 0), (0, 7), (0, 14), (7, 0), (7, 14), (14, 0), (14, 7), (14, 14)];
         for &(row, col) in &triple_word {
-            multipliers[row][col] = Multiplier::TripleWord;
+            multipliers[row][col] = Some(Multiplier::TripleWord);
         }
 
         let double_word = [
@@ -44,9 +44,10 @@ impl Board {
             (12, 12),
             (11, 11),
             (10, 10),
+            (7, 7),
         ];
         for &(row, col) in &double_word {
-            multipliers[row][col] = Multiplier::DoubleWord;
+            multipliers[row][col] = Some(Multiplier::DoubleWord);
         }
 
         let triple_letter = [
@@ -64,7 +65,7 @@ impl Board {
             (13, 9),
         ];
         for &(row, col) in &triple_letter {
-            multipliers[row][col] = Multiplier::TripleLetter;
+            multipliers[row][col] = Some(Multiplier::TripleLetter);
         }
 
         let double_letter = [
@@ -94,11 +95,11 @@ impl Board {
             (14, 11),
         ];
         for &(row, col) in &double_letter {
-            multipliers[row][col] = Multiplier::DoubleLetter;
+            multipliers[row][col] = Some(Multiplier::DoubleLetter);
         }
 
         Self {
-            grid: [[None; BOARD_TILES]; BOARD_TILES],
+            grid_2d: [[Tile::empty(); BOARD_TILES]; BOARD_TILES],
             multipliers,
         }
     }
@@ -113,32 +114,40 @@ impl Board {
 
     pub fn place_tile(&mut self, pos: Pos, tile: Tile) -> bool {
         let (row, col) = (pos.row, pos.col);
-        if row < BOARD_TILES && col < BOARD_TILES && self.grid[row][col].is_none() {
-            self.grid[row][col] = Some(tile);
+        if row < BOARD_TILES && col < BOARD_TILES && self.grid_2d[row][col].is_empty() {
+            self.grid_2d[row][col] = tile;
             true
         } else {
             false
         }
     }
 
-    pub fn get_tile(&self, pos: Pos) -> Option<Tile> {
+    pub fn get_board_tile(&self, pos: Pos) -> Tile {
         if pos.row < BOARD_TILES && pos.col < BOARD_TILES {
-            self.grid[pos.row][pos.col]
+            self.grid_2d[pos.row][pos.col]
         } else {
-            None
+            Tile::empty()
         }
     }
 
-    pub fn get_multiplier(&self, pos: Pos) -> Multiplier {
+    pub fn get_tile(&self, pos: Pos) -> Option<Tile> {
+        let tile = self.get_board_tile(pos);
+        if tile.is_some() { Some(tile) } else { None }
+    }
+
+    pub unsafe fn get_tile_unchecked(&self, pos: Pos) -> Tile {
+        unsafe { *self.grid_2d.get_unchecked(pos.row).get_unchecked(pos.col) }
+    }
+
+    pub fn get_multiplier(&self, pos: Pos) -> Option<Multiplier> {
         if pos.row < BOARD_TILES && pos.col < BOARD_TILES {
-            self.multipliers[pos.row][pos.col]
-        } else {
-            Multiplier::Normal
+            return self.multipliers[pos.row][pos.col];
         }
+        None
     }
 
     pub fn is_empty(&self) -> bool {
-        for row in &self.grid {
+        for row in &self.grid_2d {
             for &cell in row {
                 if cell.is_some() {
                     return false;
@@ -153,7 +162,8 @@ impl Board {
         let mut tiles = Vec::new();
         for row in 0..BOARD_TILES {
             for col in 0..BOARD_TILES {
-                if let Some(tile) = self.grid[row][col] {
+                let tile = self.grid_2d[row][col];
+                if tile.is_some() {
                     tiles.push((Pos::new(row, col), tile));
                 }
             }
