@@ -274,6 +274,7 @@ impl MoveGenerator {
             0,
             ExploreDir::Back,
             current_node,
+            false,
         );
     }
 
@@ -289,6 +290,7 @@ impl MoveGenerator {
         offset: i8,
         explore_dir: ExploreDir,
         current_node: CompiledAddr,
+        placed_tiles_seen: bool,
     ) {
         let offset_dir = match direction {
             Direction::Horizontal => (0, 1),
@@ -317,6 +319,7 @@ impl MoveGenerator {
                         suffix_offset as i8, // start at 1 to the right
                         ExploreDir::Forward,
                         new_node,
+                        placed_tiles_seen,
                     );
                 }
                 return;
@@ -343,6 +346,7 @@ impl MoveGenerator {
                     offset + explore_dir as i8,
                     explore_dir,
                     next_node,
+                    true, // placed tiles seen
                 );
 
                 move_buffer.unset(board_idx);
@@ -364,6 +368,10 @@ impl MoveGenerator {
             });
         }
 
+        if placed_tiles_seen && matches!(explore_dir, ExploreDir::Back) {
+            return;
+        }
+
         let cross_check = unsafe { *cross_checks.get_unchecked(current_pos.row).get_unchecked(current_pos.col) };
         let cross_check_mask = CrossChecks::get_mask(cross_check);
         GADDAG.for_each_child(current_node, |letter| {
@@ -381,6 +389,7 @@ impl MoveGenerator {
                         suffix_offset as i8, // start at 1 to the right
                         ExploreDir::Forward,
                         delimiter_node,
+                        placed_tiles_seen,
                     );
                 }
                 return true;
@@ -406,6 +415,7 @@ impl MoveGenerator {
                         offset + explore_dir as i8,
                         explore_dir,
                         next_node,
+                        placed_tiles_seen,
                     );
                 }
                 move_buffer.unset(board_idx);
