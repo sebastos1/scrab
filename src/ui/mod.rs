@@ -3,7 +3,7 @@ mod engine;
 use macroquad::prelude::*;
 
 const MARGIN: f32 = 50.0;
-const WINDOW_WIDTH: f32 = board::BOARD_SIZE + MARGIN * 2.0 + 300.0;
+const WINDOW_WIDTH: f32 = board::BOARD_SIZE + MARGIN * 2.0 + engine::SIDEBAR_WIDTH + MARGIN;
 const WINDOW_HEIGHT: f32 = board::BOARD_SIZE + MARGIN * 2.0 + 180.0;
 pub const BACKGROUND_COLOR: Color = Color::from_hex(0x071830);
 
@@ -18,6 +18,7 @@ pub fn get_window_config() -> Conf {
         window_title: "scrab".to_string(),
         window_width: WINDOW_WIDTH as i32,
         window_height: WINDOW_HEIGHT as i32,
+        sample_count: 4,
         ..Default::default()
     }
 }

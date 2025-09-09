@@ -6,57 +6,82 @@ use crate::{
         moves::{Direction, Move, PlayedTile},
     },
     game::board::BOARD_TILES,
-    ui::{MARGIN, board::BOARD_SIZE},
+    ui::{
+        MARGIN,
+        board::{BOARD_SIZE, CELL_SIZE},
+    },
 };
 
+const PLAYER_HEADER_HEIGHT: f32 = 40.0;
+pub const SIDEBAR_X: f32 = MARGIN * 2. + BOARD_SIZE;
+pub const SIDEBAR_WIDTH: f32 = 280.0;
+pub const MOVE_LIST_HEIGHT: f32 = BOARD_SIZE - PLAYER_HEADER_HEIGHT - MARGIN;
+pub const MOVE_LIST_LINE_HEIGHT: f32 = 25.0;
+const SCROLLBAR_WIDTH: f32 = 10.0;
+const VISIBLE_MOVES: usize = (MOVE_LIST_HEIGHT / MOVE_LIST_LINE_HEIGHT) as usize;
+const MOVES_HEADER_HEIGHT: f32 = 30.0;
+
+const SCROLLBAR_COLOR: Color = Color::new(0.2, 0.2, 0.2, 1.0);
+const SCROLLBAR_THUMB_COLOR: Color = Color::new(0.6, 0.6, 0.6, 1.0);
+pub const TEXT_HOVER_COLOR: Color = Color::new(1.0, 0.9, 0.4, 1.0);
+const MOVE_HOVER_COLOR: Color = Color::new(0.3, 0.3, 0.3, 0.6);
+
 impl super::UI {
+    pub fn draw_players(&self, scores: &[u16; 2], current_player: usize) {
+        let player_header_y = MARGIN;
+        for (i, &score) in scores.iter().enumerate() {
+            draw_text_ex(
+                &format!("Player {} - {}", i + 1, score),
+                SIDEBAR_X + i as f32 * 140.0,
+                player_header_y + 18.0,
+                TextParams {
+                    font: self.font.as_ref(),
+                    font_size: 14,
+                    color: if i == current_player { WHITE } else { TEXT_HOVER_COLOR },
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
     pub fn draw_move_list(&mut self, moves: &[Move]) -> Option<usize> {
         let mut moves: Vec<_> = moves.iter().enumerate().collect();
-        // moves.sort_by(|a, b| b.1.rack_tiles_count().cmp(&a.1.rack_tiles_count()));
-
-        // sort by score instead
         moves.sort_by(|a, b| b.1.score.cmp(&a.1.score));
 
-        let moves_x = MARGIN + BOARD_SIZE + 30.0;
-        let moves_y = MARGIN;
-        let line_height = 25.0;
-        let visible_moves = 20;
-        let list_height = visible_moves as f32 * line_height;
-
-        let (_scroll_x, scroll_y) = mouse_wheel();
-        if scroll_y != 0.0 {
-            if scroll_y > 0.0 && self.scroll_offset > 0 {
-                self.scroll_offset = self.scroll_offset.saturating_sub(3);
-            } else if scroll_y < 0.0 && self.scroll_offset + visible_moves < moves.len() {
-                self.scroll_offset += 3;
+        let (_, scroll) = mouse_wheel();
+        if scroll != 0.0 {
+            if scroll > 0.0 && self.scroll_offset > 0 {
+                self.scroll_offset = self.scroll_offset.saturating_sub(1);
+            } else if scroll < 0.0 && self.scroll_offset + VISIBLE_MOVES < moves.len() {
+                self.scroll_offset += 1;
             }
         }
 
+        let move_list_y = MARGIN + PLAYER_HEADER_HEIGHT;
+
         draw_text_ex(
-            &format!(
-                "Moves: {} ({}-{})",
-                moves.len(),
-                self.scroll_offset + 1,
-                (self.scroll_offset + visible_moves).min(moves.len())
-            ),
-            moves_x,
-            moves_y,
+            &format!("{} moves:", moves.len(),),
+            SIDEBAR_X,
+            move_list_y,
             TextParams {
                 font: self.font.as_ref(),
-                font_size: 16,
-                color: WHITE,
+                font_size: 20,
                 ..Default::default()
             },
         );
 
-        let scrollbar_x = moves_x + 280.0;
-        let scrollbar_y = moves_y + 30.0;
-        draw_rectangle(scrollbar_x, scrollbar_y, 10.0, list_height, Color::new(0.2, 0.2, 0.2, 1.0));
+        let scrollbar_x = SIDEBAR_X + SIDEBAR_WIDTH - SCROLLBAR_WIDTH;
+        let scrollbar_y = move_list_y + MOVES_HEADER_HEIGHT;
+        draw_rectangle(scrollbar_x, scrollbar_y, SCROLLBAR_WIDTH, MOVE_LIST_HEIGHT, SCROLLBAR_COLOR);
 
-        if moves.len() > visible_moves {
-            let thumb_height = (visible_moves as f32 / moves.len() as f32) * list_height;
-            let thumb_y = scrollbar_y + (self.scroll_offset as f32 / moves.len() as f32) * list_height;
-            draw_rectangle(scrollbar_x, thumb_y, 10.0, thumb_height, Color::new(0.6, 0.6, 0.6, 1.0));
+        if moves.len() > VISIBLE_MOVES {
+            draw_rectangle(
+                scrollbar_x,
+                scrollbar_y + (self.scroll_offset as f32 / moves.len() as f32) * MOVE_LIST_HEIGHT,
+                SCROLLBAR_WIDTH,
+                (VISIBLE_MOVES as f32 / moves.len() as f32) * MOVE_LIST_HEIGHT,
+                SCROLLBAR_THUMB_COLOR,
+            );
         }
 
         let mouse_pos = mouse_position();
@@ -64,12 +89,11 @@ impl super::UI {
         self.hovered_move = None;
         let mut clicked_move = None;
 
-        let end_idx = (self.scroll_offset + visible_moves).min(moves.len());
+        let end_idx = (self.scroll_offset + VISIBLE_MOVES).min(moves.len());
         for (display_idx, (original_idx, mv)) in moves[self.scroll_offset..end_idx].iter().enumerate() {
             let actual_idx = self.scroll_offset + display_idx;
-            let y = moves_y + 40.0 + display_idx as f32 * line_height;
-
-            let hover_rect = (moves_x, y - 12.0, 270.0, line_height);
+            let text_y = MARGIN + MOVES_HEADER_HEIGHT + PLAYER_HEADER_HEIGHT + 10.0 + display_idx as f32 * MOVE_LIST_LINE_HEIGHT;
+            let hover_rect = (SIDEBAR_X, text_y - 10.0, SIDEBAR_WIDTH - 20.0, MOVE_LIST_LINE_HEIGHT);
             let is_hovered = mouse_pos.0 >= hover_rect.0
                 && mouse_pos.0 <= hover_rect.0 + hover_rect.2
                 && mouse_pos.1 >= hover_rect.1
@@ -77,34 +101,23 @@ impl super::UI {
 
             if is_hovered {
                 self.hovered_move = Some(actual_idx);
-                self.draw_rounded_rect(
-                    hover_rect.0 - 3.0,
-                    hover_rect.1,
-                    hover_rect.2,
-                    hover_rect.3,
-                    3.0,
-                    Color::new(0.3, 0.3, 0.3, 0.6),
-                );
-
+                draw_rectangle(hover_rect.0, hover_rect.1, hover_rect.2, hover_rect.3, MOVE_HOVER_COLOR);
                 if mouse_clicked {
                     clicked_move = Some(*original_idx);
                     self.scroll_offset = 0;
                 }
             }
 
-            let text_color = if is_hovered { Color::new(1.0, 0.9, 0.4, 1.0) } else { WHITE };
-
+            let text_color = if is_hovered { TEXT_HOVER_COLOR } else { WHITE };
             let direction_arrow = match mv.direction {
                 Direction::Horizontal => ">",
                 Direction::Vertical => "↓",
             };
 
-            let word = mv.get_word_string();
-
             draw_text_ex(
-                &format!("{} {} ({}pts)", word, direction_arrow, mv.score),
-                moves_x,
-                y,
+                &format!("{} {} ({}pts)", mv.get_word_string(), direction_arrow, mv.score),
+                SIDEBAR_X,
+                text_y + 5.,
                 TextParams {
                     font: self.font.as_ref(),
                     font_size: 13,
@@ -119,7 +132,6 @@ impl super::UI {
                 self.draw_move_preview(mv);
             }
         }
-
         clicked_move
     }
 
@@ -140,7 +152,7 @@ impl super::UI {
 
                 if let Some(PlayedTile::FromRack(tile)) = mv.tiles_data[i].1 {
                     let (tile_x, tile_y) = self.tile_position(Pos::new(row, col));
-                    self.draw_placeable_tile(tile_x, tile_y, tile, true);
+                    self.draw_letter_tile(tile_x, tile_y, CELL_SIZE, tile, true);
                 }
 
                 tile_offset += 1;

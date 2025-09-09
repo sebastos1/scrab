@@ -7,7 +7,7 @@ use crate::{
 };
 
 // bitmask 0-25 for A-Z and the final bits are used to store the score. swag
-// this gives the score 6 bits, so a max score of 63, which is plenty in scrabble
+// this gives the score 6 bits, so a max score of 63, which is plenty
 pub type CrossChecks = [[u32; BOARD_TILES]; BOARD_TILES];
 
 pub trait CrossChecksExt {

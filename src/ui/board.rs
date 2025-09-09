@@ -1,50 +1,132 @@
+use super::MARGIN;
 use crate::engine::Pos;
-use crate::game::bag::Bag;
-use crate::game::board::BOARD_TILES;
-use crate::game::board::Board;
-use crate::game::board::Multiplier;
-use crate::game::rack::Rack;
-use crate::game::tile::Tile;
-use crate::ui::MARGIN;
+use crate::game::{
+    bag::Bag,
+    board::{Board, Multiplier, BOARD_TILES},
+    rack::Rack,
+    tile::Tile,
+};
 use macroquad::prelude::*;
 
 pub const BOARD_SIZE: f32 = 600.0;
+const BOARD_PADDING: f32 = 10.0;
 pub const CELL_SIZE: f32 = BOARD_SIZE / BOARD_TILES as f32;
 pub const TILE_SIZE: f32 = CELL_SIZE * 0.9;
 const CORNER_RADIUS: f32 = 6.0;
 
-const BOARD_COLOR: Color = WHITE;
-const TW_COLOR: Color = Color::from_hex(0xbe4f50);
-const TL_COLOR: Color = Color::from_hex(0x0f6798);
-const DW_COLOR: Color = Color::from_hex(0x6aa3c4);
-const DL_COLOR: Color = Color::from_hex(0xe3a3a5);
-const BLANK_TILE_COLOR: Color = Color::new(0.76, 0.77, 0.82, 1.0); // #c3c5d0
+// const BOARD_COLOR: Color = WHITE;
+// const BLANK_TILE_COLOR: Color = Color::from_hex(0xc3c5d0);
+const BOARD_COLOR: Color = Color::from_hex(0x252626);
+const BLANK_TILE_COLOR: Color = Color::from_hex(0x747575);
+const TW_COLOR: Color = Color::from_hex(0xf06292);
+const DW_COLOR: Color = Color::from_hex(0xf8bbd9);
+const TL_COLOR: Color = Color::from_hex(0x5c6bc0);
+const DL_COLOR: Color = Color::from_hex(0x90caf9);
 const PLACEABLE_TILE_BG: Color = Color::new(0.996, 0.855, 0.624, 1.0); // #feda9f
 const PLACEABLE_TILE_BORDER: Color = Color::new(0.929, 0.784, 0.537, 1.0); // #edc889
 const START_TILE_COLOR: Color = Color::new(1.0, 0.84, 0.0, 1.0); // gold
-const BOARD_PADDING: f32 = 10.0;
+const HIGHLIGHTED_TILE_BG: Color = Color::new(1.0, 0.8, 0.8, 1.0);
 
 impl super::UI {
     // returns the top left corner of a tile
     pub fn tile_position(&self, pos: Pos) -> (f32, f32) {
-        let x = super::MARGIN + pos.col as f32 * CELL_SIZE;
-        let y = super::MARGIN + pos.row as f32 * CELL_SIZE;
+        let x = MARGIN + pos.col as f32 * CELL_SIZE;
+        let y = MARGIN + pos.row as f32 * CELL_SIZE;
         (x, y)
     }
 
-    pub fn tile_center(&self, pos: Pos) -> (f32, f32) {
+    // magic rounded rect
+    pub fn draw_rounded_tile(&self, x: f32, y: f32, size: f32, r: f32, color: Color) {
+        draw_rectangle(x + r, y, size - 2.0 * r, size, color);
+        draw_rectangle(x, y + r, size, size - 2.0 * r, color);
+        draw_circle(x + r, y + r, r, color);
+        draw_circle(x + size - r, y + r, r, color);
+        draw_circle(x + r, y + size - r, r, color);
+        draw_circle(x + size - r, y + size - r, r, color);
+    }
+
+    fn draw_centered_text(&self, text: &str, x: f32, y: f32, w: f32, font_size: f32, color: Color) {
+        let dims = measure_text(text, self.font.as_ref(), font_size as u16, 1.0);
+        draw_text_ex(
+            text,
+            x + (w - dims.width) / 2.0,
+            y + (w + dims.height) / 2.0,
+            TextParams {
+                font: self.font.as_ref(),
+                font_size: font_size as u16,
+                color,
+                ..Default::default()
+            },
+        );
+    }
+
+    pub fn draw_board_tile(&self, pos: Pos, board: &Board) {
+        let (bg_color, text, text_color) = if let Some(multi) = board.get_multiplier(pos) {
+            match multi {
+                Multiplier::TripleWord => (TW_COLOR, "3W", DW_COLOR),
+                Multiplier::DoubleWord => {
+                    if pos.row == 7 && pos.col == 7 {
+                        (START_TILE_COLOR, "^_^", TW_COLOR)
+                    } else {
+                        (DW_COLOR, "2W", TW_COLOR)
+                    }
+                }
+                Multiplier::TripleLetter => (TL_COLOR, "3L", DL_COLOR),
+                Multiplier::DoubleLetter => (DL_COLOR, "2L", TL_COLOR),
+            }
+        } else {
+            (BLANK_TILE_COLOR, "", WHITE)
+        };
+
         let (x, y) = self.tile_position(pos);
-        (x + CELL_SIZE / 2.0, y + CELL_SIZE / 2.0)
+        let offset = (CELL_SIZE - TILE_SIZE) / 2.0;
+        let x = x + offset;
+        let y = y + offset;
+        self.draw_rounded_tile(x, y, TILE_SIZE, CORNER_RADIUS, bg_color);
+
+        if !text.is_empty() {
+            let font_size = TILE_SIZE * 0.5;
+            self.draw_centered_text(text, x, y, TILE_SIZE, font_size, text_color);
+        }
+    }
+
+    pub fn draw_letter_tile(&self, x: f32, y: f32, size: f32, tile: Tile, highlight: bool) {
+        self.draw_rounded_tile(x, y, size, CORNER_RADIUS, PLACEABLE_TILE_BORDER);
+
+        let bg_color = if highlight { HIGHLIGHTED_TILE_BG } else { PLACEABLE_TILE_BG };
+        let padding = size * 0.05;
+        self.draw_rounded_tile(x + padding, y + padding, size - 2.0 * padding, CORNER_RADIUS, bg_color);
+
+        let letter = tile.to_char().to_string();
+        let font_size = size * 0.6;
+        self.draw_centered_text(&letter, x, y, size, font_size, BLACK);
+
+        let points = tile.points().to_string();
+        if points != "0" {
+            let small_font_size = size * 0.25;
+            let points_x = x + size - size * 0.25;
+            let points_y = y + size - size * 0.1;
+            draw_text_ex(
+                &points,
+                points_x,
+                points_y,
+                TextParams {
+                    font: self.font.as_ref(),
+                    font_size: small_font_size as u16,
+                    color: BLACK,
+                    ..Default::default()
+                },
+            );
+        }
     }
 
     pub fn draw_board(&self, board: &Board) {
-        let start_x = super::MARGIN;
-        let start_y = super::MARGIN;
+        let start_x = MARGIN;
+        let start_y = MARGIN;
 
-        self.draw_rounded_rect(
+        self.draw_rounded_tile(
             start_x - BOARD_PADDING,
             start_y - BOARD_PADDING,
-            BOARD_SIZE + BOARD_PADDING * 2.,
             BOARD_SIZE + BOARD_PADDING * 2.,
             CORNER_RADIUS * 2.0,
             BOARD_COLOR,
@@ -53,155 +135,29 @@ impl super::UI {
         for row in 0..BOARD_TILES {
             for col in 0..BOARD_TILES {
                 let pos = Pos::new(row, col);
-                let (cell_x, cell_y) = self.tile_position(pos);
-
-                // for spacing between tiles
-                let tile_offset = (CELL_SIZE - TILE_SIZE) / 2.0;
-                let tile_x = cell_x + tile_offset;
-                let tile_y = cell_y + tile_offset;
-
+                let (tile_x, tile_y) = self.tile_position(pos);
                 if let Some(tile) = board.get_tile(pos) {
-                    self.draw_placeable_tile(tile_x, tile_y, tile, false);
+                    self.draw_letter_tile(tile_x, tile_y, CELL_SIZE, tile, false);
                 } else {
-                    self.draw_multiplier_tile(tile_x, tile_y, board, pos);
+                    self.draw_board_tile(pos, board);
                 }
             }
         }
     }
 
     pub fn draw_rack(&self, rack: &Rack) {
-        let rack_y = super::MARGIN + BOARD_SIZE + 30.0;
-        let rack_start_x = super::MARGIN + (BOARD_SIZE - 7.0 * (CELL_SIZE + 5.0)) / 2.0;
-
         for (i, &tile) in rack.tiles().iter().enumerate() {
-            let x = rack_start_x + i as f32 * (CELL_SIZE + 5.0);
-
-            let tile_offset = (CELL_SIZE - TILE_SIZE) / 2.0;
-            let tile_x = x + tile_offset;
-            let tile_y = rack_y + tile_offset;
-
-            self.draw_placeable_tile(tile_x, tile_y, tile, false);
+            let x = MARGIN + i as f32 * (CELL_SIZE + 5.0);
+            self.draw_letter_tile(x, BOARD_SIZE + MARGIN * 2., CELL_SIZE, tile, false);
         }
-    }
-
-    pub fn draw_placeable_tile(&self, x: f32, y: f32, tile: Tile, highlight: bool) {
-        self.draw_rounded_rect(
-            x - TILE_SIZE * 0.05,
-            y - TILE_SIZE * 0.05,
-            TILE_SIZE * 1.1,
-            TILE_SIZE * 1.1,
-            CORNER_RADIUS,
-            PLACEABLE_TILE_BORDER,
-        );
-
-        let bg_color = if highlight {
-            Color::new(1.0, 0.8, 0.8, 1.0) // red tint
-        } else {
-            PLACEABLE_TILE_BG
-        };
-
-        self.draw_rounded_rect(x, y, TILE_SIZE, TILE_SIZE, CORNER_RADIUS, bg_color);
-
-        self.draw_tile_content(x, y, tile, BLACK);
-    }
-
-    fn draw_multiplier_tile(&self, x: f32, y: f32, board: &Board, pos: Pos) {
-        let (color, text) = if let Some(multi) = board.get_multiplier(pos) {
-            match multi {
-                Multiplier::TripleWord => (TW_COLOR, "TW"),
-                Multiplier::DoubleWord => {
-                    if pos.row == 7 && pos.col == 7 {
-                        (START_TILE_COLOR, "star")
-                    } else {
-                        (DW_COLOR, "DW")
-                    }
-                }
-                Multiplier::TripleLetter => (TL_COLOR, "TL"),
-                Multiplier::DoubleLetter => (DL_COLOR, "DL"),
-            }
-        } else {
-            (BLANK_TILE_COLOR, "")
-        };
-
-        self.draw_rounded_rect(x, y, TILE_SIZE, TILE_SIZE, CORNER_RADIUS, color);
-
-        if !text.is_empty() {
-            let font_size = TILE_SIZE * 0.3;
-            let text_dims = measure_text(text, self.font.as_ref(), font_size as u16, 1.0);
-            let text_x = x + (TILE_SIZE - text_dims.width) / 2.0;
-            let text_y = y + (TILE_SIZE + text_dims.height) / 2.0;
-
-            draw_text_ex(
-                text,
-                text_x,
-                text_y,
-                TextParams {
-                    font: self.font.as_ref(),
-                    font_size: font_size as u16,
-                    color: WHITE,
-                    ..Default::default()
-                },
-            );
-        }
-    }
-
-    fn draw_tile_content(&self, x: f32, y: f32, tile: Tile, text_color: Color) {
-        let letter_char = tile.to_char();
-        let letter = letter_char.to_string();
-
-        let font_size = TILE_SIZE * 0.6;
-        let text_dims = measure_text(&letter, self.font.as_ref(), font_size as u16, 1.0);
-        let text_x = x + (TILE_SIZE - text_dims.width) / 2.0;
-        let text_y = y + (TILE_SIZE + text_dims.height) / 2.0;
-
-        draw_text_ex(
-            &letter,
-            text_x,
-            text_y,
-            TextParams {
-                font: self.font.as_ref(),
-                font_size: font_size as u16,
-                color: text_color,
-                ..Default::default()
-            },
-        );
-
-        let points = tile.points().to_string();
-        if points != "0" {
-            let small_font_size = TILE_SIZE * 0.25;
-            let points_x = x + TILE_SIZE - TILE_SIZE * 0.25;
-            let points_y = y + TILE_SIZE - TILE_SIZE * 0.1;
-
-            draw_text_ex(
-                &points,
-                points_x,
-                points_y,
-                TextParams {
-                    font: self.font.as_ref(),
-                    font_size: small_font_size as u16,
-                    color: text_color,
-                    ..Default::default()
-                },
-            );
-        }
-    }
-
-    // magic rounded rect
-    pub fn draw_rounded_rect(&self, x: f32, y: f32, w: f32, h: f32, r: f32, color: Color) {
-        draw_rectangle(x + r, y, w - 2.0 * r, h, color);
-        draw_rectangle(x, y + r, w, h - 2.0 * r, color);
-        draw_circle(x + r, y + r, r, color);
-        draw_circle(x + w - r, y + r, r, color);
-        draw_circle(x + r, y + h - r, r, color);
-        draw_circle(x + w - r, y + h - r, r, color);
     }
 
     pub fn draw_bag(&self, bag: &Bag) {
-        let bag_x = MARGIN + BOARD_SIZE + 30.0;
-        let bag_y = MARGIN + 550.0;
+        let bag_x = MARGIN + BOARD_SIZE + MARGIN;
+        let bag_y = MARGIN + BOARD_SIZE + MARGIN; // lel
         let mini_tile_size = 20.0;
         let spacing = 25.0;
-        let grid_cols = 4;
+        let grid_cols = 6;
 
         draw_text_ex(
             &format!("Tiles left: {}", bag.tiles_left()),
@@ -216,7 +172,6 @@ impl super::UI {
         );
 
         let tile_counts = bag.get_tile_counts();
-
         let mut row = 0;
         let mut col = 0;
 
@@ -226,29 +181,9 @@ impl super::UI {
             }
 
             let x = bag_x + col as f32 * (mini_tile_size + spacing);
-            let y = bag_y + 25.0 + row as f32 * (mini_tile_size + 8.0);
+            let y = bag_y + 20.0 + row as f32 * (mini_tile_size + 8.0);
 
-            self.draw_rounded_rect(x, y, mini_tile_size, mini_tile_size, 2.0, PLACEABLE_TILE_BG);
-
-            let letter_char = tile.to_char();
-            let letter = letter_char.to_string();
-
-            let font_size = mini_tile_size * 0.6;
-            let text_dims = measure_text(&letter, self.font.as_ref(), font_size as u16, 1.0);
-            let text_x = x + (mini_tile_size - text_dims.width) / 2.0;
-            let text_y = y + (mini_tile_size + text_dims.height) / 2.0;
-
-            draw_text_ex(
-                &letter,
-                text_x,
-                text_y,
-                TextParams {
-                    font: self.font.as_ref(),
-                    font_size: font_size as u16,
-                    color: BLACK,
-                    ..Default::default()
-                },
-            );
+            self.draw_letter_tile(x, y, mini_tile_size, *tile, false);
 
             draw_text_ex(
                 &count.to_string(),

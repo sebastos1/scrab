@@ -9,7 +9,7 @@ use macroquad::prelude::*;
 use ui::*;
 
 lazy_static! {
-    static ref GADDAG: Gaddag = Gaddag::from_wordlist("wordlist.txt");
+    static ref GADDAG: Gaddag = Gaddag::from_wordlist("wordlists/CSW24.txt");
 }
 
 #[macroquad::main(get_window_config)]
@@ -26,6 +26,7 @@ async fn main() {
         ui.draw_board(&game.board);
         ui.draw_rack(&game.racks[game.current_player]);
         ui.draw_bag(&game.bag);
+        ui.draw_players(&game.scores, game.current_player);
 
         if board_updated {
             let move_generator = MoveGenerator::new(game.board.clone(), game.racks[game.current_player].clone());
