@@ -217,6 +217,8 @@ impl MoveGenerator {
             duration3
         );
 
+        // filter moves ?
+
         moves
     }
 

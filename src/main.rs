@@ -2,7 +2,7 @@ mod engine;
 pub mod game;
 pub mod ui;
 
-use crate::{engine::moves::MoveGenerator, ui::get_window_config};
+use crate::{engine::moves::MoveGenerator, game::tile::Tile, ui::get_window_config};
 use engine::gaddag::Gaddag;
 use lazy_static::lazy_static;
 use macroquad::prelude::*;
@@ -21,10 +21,11 @@ async fn main() {
     let mut ui = UI::new().await;
     let mut moves = Vec::new();
     let mut board_updated = true;
+    let mut selected_rack_tiles: Vec<usize> = Vec::new();
     loop {
         clear_background(ui::BACKGROUND_COLOR);
         ui.draw_board(&game.board);
-        ui.draw_rack(&game.racks[game.current_player]);
+        ui.draw_rack(&game.racks[game.current_player], &mut selected_rack_tiles);
         ui.draw_bag(&game.bag);
         ui.draw_players(&game.scores, game.current_player);
 
@@ -32,8 +33,7 @@ async fn main() {
             let move_generator = MoveGenerator::new(game.board.clone(), game.racks[game.current_player].clone());
             moves = move_generator.generate_moves();
             board_updated = false;
-
-            println!("playser scores: {:?}", game.scores);
+            selected_rack_tiles.clear();
         }
 
         if let Some(move_idx) = ui.draw_move_list(&moves) {
@@ -47,6 +47,20 @@ async fn main() {
             game = game::init();
             board_updated = true;
         }
+
+        if is_key_pressed(KeyCode::P) {
+            game.pass_turn();
+            board_updated = true;
+        }
+
+        if is_key_pressed(KeyCode::E) {
+            let tiles_to_exchange: Vec<Tile> = selected_rack_tiles.iter().map(|&i| game.racks[game.current_player].tiles()[i]).collect();
+            if game.exchange(tiles_to_exchange) {
+                board_updated = true;
+            };
+        }
+
+        ui.draw_hint();
 
         next_frame().await
     }

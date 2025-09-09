@@ -37,7 +37,7 @@ impl super::UI {
                 TextParams {
                     font: self.font.as_ref(),
                     font_size: 14,
-                    color: if i == current_player { WHITE } else { TEXT_HOVER_COLOR },
+                    color: if i == current_player { TEXT_HOVER_COLOR } else { WHITE },
                     ..Default::default()
                 },
             );

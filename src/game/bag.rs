@@ -1,9 +1,11 @@
+use crate::game::rack::Rack;
+
 use super::tile::Tile;
 use rand::seq::SliceRandom;
 
 #[derive(Debug, Clone)]
 pub struct Bag {
-    tiles: Vec<Tile>,
+    pub tiles: Vec<Tile>,
 }
 
 impl Bag {
@@ -71,30 +73,25 @@ impl Bag {
         drawn
     }
 
-    pub fn swap(&mut self, tiles: &mut Vec<Tile>) {
-        if tiles.len() > self.tiles_left() {
-            return;
+    pub fn swap(&mut self, rack: &mut Rack, tiles_to_swap: Vec<Tile>) -> bool {
+        // there has to be 7 tiles yo
+        if self.tiles.len() < 7 || tiles_to_swap.is_empty() || tiles_to_swap.len() > 7 {
+            return false;
         }
 
-        let mut new_tiles = Vec::new();
-        for _ in 0..tiles.len() {
-            if let Some(tile) = self.draw() {
-                new_tiles.push(tile);
-            }
+        for tile_to_swap in &tiles_to_swap {
+            rack.remove_tile(*tile_to_swap);
         }
 
-        self.tiles.extend(tiles.drain(..));
+        let new_tiles = self.draw_tiles(tiles_to_swap.len());
+        self.tiles.extend(tiles_to_swap);
         self.shuffle();
 
-        tiles.extend(new_tiles);
-    }
+        for tile in new_tiles {
+            rack.add_tile(tile);
+        }
 
-    pub fn tiles_left(&self) -> usize {
-        self.tiles.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.tiles.is_empty()
+        true
     }
 
     pub fn get_tile_counts(&self) -> Vec<(Tile, usize)> {

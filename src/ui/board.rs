@@ -2,7 +2,7 @@ use super::MARGIN;
 use crate::engine::Pos;
 use crate::game::{
     bag::Bag,
-    board::{Board, Multiplier, BOARD_TILES},
+    board::{BOARD_TILES, Board, Multiplier},
     rack::Rack,
     tile::Tile,
 };
@@ -33,6 +33,8 @@ impl super::UI {
         let x = MARGIN + pos.col as f32 * CELL_SIZE;
         let y = MARGIN + pos.row as f32 * CELL_SIZE;
         (x, y)
+
+        // end of impl super::UI
     }
 
     // magic rounded rect
@@ -145,10 +147,47 @@ impl super::UI {
         }
     }
 
-    pub fn draw_rack(&self, rack: &Rack) {
+    pub fn draw_rack(&self, rack: &Rack, selected_indices: &mut Vec<usize>) {
         for (i, &tile) in rack.tiles().iter().enumerate() {
             let x = MARGIN + i as f32 * (CELL_SIZE + 5.0);
-            self.draw_letter_tile(x, BOARD_SIZE + MARGIN * 2., CELL_SIZE, tile, false);
+            let y = BOARD_SIZE + MARGIN * 2.0;
+
+            let is_selected = selected_indices.contains(&i);
+            if is_mouse_button_pressed(MouseButton::Left) {
+                let (mouse_x, mouse_y) = mouse_position();
+                if mouse_x >= x && mouse_x <= x + CELL_SIZE && mouse_y >= y && mouse_y <= y + CELL_SIZE {
+                    if is_selected {
+                        if let Some(pos) = selected_indices.iter().position(|&idx| idx == i) {
+                            selected_indices.remove(pos);
+                        }
+                    } else {
+                        selected_indices.push(i);
+                    }
+                }
+            }
+
+            self.draw_letter_tile(x, y, CELL_SIZE, tile, is_selected);
+        }
+    }
+
+    pub fn draw_hint(&self) {
+        let mut hint_x = MARGIN;
+        let keybinds = [("E", "Exchange"), ("P", "Pass"), ("R", "Restart")];
+        for (key, action) in keybinds.iter() {
+            let text = format!("[{}] {}  ", key, action);
+            draw_text_ex(
+                &text,
+                hint_x,
+                BOARD_SIZE + MARGIN * 3.0 + CELL_SIZE + 20.0,
+                TextParams {
+                    font: self.font.as_ref(),
+                    font_size: 20,
+                    color: WHITE,
+                    ..Default::default()
+                },
+            );
+            let dims = measure_text(&text, self.font.as_ref(), 20, 1.0);
+            hint_x += dims.width + 16.0;
         }
     }
 
@@ -160,7 +199,7 @@ impl super::UI {
         let grid_cols = 6;
 
         draw_text_ex(
-            &format!("Tiles left: {}", bag.tiles_left()),
+            &format!("Tiles left: {}", bag.tiles.len()),
             bag_x,
             bag_y,
             TextParams {

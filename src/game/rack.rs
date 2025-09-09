@@ -32,6 +32,10 @@ impl Rack {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
     pub fn take_tile(&mut self, letter: u8) -> Option<Tile> {
         if letter >= b'A' && letter <= b'Z' {
             let bit = 1u32 << (letter - b'A');
