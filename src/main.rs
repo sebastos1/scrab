@@ -1,8 +1,14 @@
+mod ai;
 mod engine;
-pub mod game;
-pub mod ui;
+mod game;
+mod ui;
 
-use crate::{engine::moves::MoveGenerator, game::tile::Tile, ui::get_window_config};
+use crate::{
+    ai::network::Network,
+    engine::moves::MoveGenerator,
+    game::{Game, tile::Tile},
+    ui::get_window_config,
+};
 use engine::gaddag::Gaddag;
 use lazy_static::lazy_static;
 use macroquad::prelude::*;
@@ -17,6 +23,7 @@ async fn main() {
     println!("Gaddag entry count: {:#?}", &GADDAG.0.as_fst().size());
 
     let mut game = game::init();
+    let network = Network::init().unwrap();
 
     let mut ui = UI::new().await;
     let mut moves = Vec::new();
@@ -34,6 +41,19 @@ async fn main() {
             moves = move_generator.generate_moves();
             board_updated = false;
             selected_rack_tiles.clear();
+
+            // simulate moves and score
+            let mut evals = Vec::new();
+            let sim_games: Vec<Game> = moves.iter().map(|mv| game.simulate_move(mv)).collect();
+
+            let evaluations = network.evaluate_batch(&sim_games).unwrap();
+
+            for (i, mv) in moves.iter().enumerate() {
+                evals.push((mv.get_word_string(), evaluations[i]));
+            }
+            for eval in evals {
+                println!("Move: {} scores {:.3}", eval.0, eval.1);
+            }
         }
 
         if let Some(move_idx) = ui.draw_move_list(&moves) {

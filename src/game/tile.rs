@@ -48,16 +48,6 @@ impl Tile {
         self.byte() as char
     }
 
-    pub fn from_char(c: char) -> Self {
-        if c == '*' {
-            Self::blank(None)
-        } else if c.is_ascii_alphabetic() {
-            Self::letter(c.to_ascii_uppercase() as u8)
-        } else {
-            Self::empty()
-        }
-    }
-
     pub fn points(self) -> u8 {
         if self.is_empty() || self.is_blank() {
             0
@@ -74,5 +64,12 @@ impl Tile {
                 _ => 0,
             }
         }
+    }
+
+    pub fn to_index(&self) -> u8 {
+        if self.is_empty() {
+            return 0;
+        }
+        if self.is_blank() { 26 } else { self.0 & Self::LETTER_MASK }
     }
 }

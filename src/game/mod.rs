@@ -13,6 +13,7 @@ use crate::{
 use board::Board;
 use rack::Rack;
 
+#[derive(Clone)]
 pub struct Game {
     pub board: Board,
     pub bag: Bag,
@@ -75,7 +76,7 @@ impl Game {
         )
     }
 
-    pub fn play_move(&mut self, mv: &Move) {
+    pub fn place_move(&mut self, mv: &Move) {
         let word_start_idx = mv.used_bits.trailing_zeros() as usize;
         let start_pos = match mv.direction {
             Direction::Horizontal => Pos::new(mv.pos.row, word_start_idx),
@@ -103,20 +104,21 @@ impl Game {
             self.racks[self.current_player].remove_tile(tile);
         }
 
-        while self.racks[self.current_player].tiles().len() < 7 && !self.bag.tiles.is_empty() {
-            if let Some(new_tile) = self.bag.draw() {
-                self.racks[self.current_player].add_tile(new_tile);
-            }
-        }
-
         if mv.score != 0 {
             self.zeroed_turns = 0;
             self.scores[self.current_player] += mv.score;
         } else {
             self.zeroed_turns += 1; // technically possible (blank next to a blank)
         }
+    }
 
-        println!("player {} played move: {:?}, scoring {}", self.current_player + 1, mv, mv.score);
+    pub fn play_move(&mut self, mv: &Move) {
+        self.place_move(mv);
+        while self.racks[self.current_player].tiles().len() < 7 && !self.bag.tiles.is_empty() {
+            if let Some(new_tile) = self.bag.draw() {
+                self.racks[self.current_player].add_tile(new_tile);
+            }
+        }
 
         self.next_turn();
     }
@@ -133,5 +135,12 @@ impl Game {
         self.zeroed_turns += 1;
         self.next_turn();
         true
+    }
+
+    // gives a copy of the current game state with the move applied
+    pub fn simulate_move(&self, mv: &Move) -> Game {
+        let mut simulated = self.clone();
+        simulated.place_move(mv);
+        simulated
     }
 }

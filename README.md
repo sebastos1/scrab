@@ -1,3 +1,6 @@
 # scrab
 
-227k words (6 blanks) in 62ms on a 5800x3d
+## for ml
+```
+"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+```

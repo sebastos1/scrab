@@ -2,7 +2,6 @@ use super::tile::Tile;
 use crate::engine::Pos;
 
 pub const BOARD_TILES: usize = 15;
-pub const BOARD_LENGTH: usize = BOARD_TILES * BOARD_TILES;
 // pub const START_POS: Pos = Pos { row: 7, col: 7 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,14 +103,6 @@ impl Board {
         }
     }
 
-    pub fn height(&self) -> usize {
-        BOARD_TILES
-    }
-
-    pub fn width(&self) -> usize {
-        BOARD_TILES
-    }
-
     pub fn place_tile(&mut self, pos: Pos, tile: Tile) -> bool {
         let (row, col) = (pos.row, pos.col);
         if row < BOARD_TILES && col < BOARD_TILES && self.grid_2d[row][col].is_empty() {
@@ -133,10 +124,6 @@ impl Board {
     pub fn get_tile(&self, pos: Pos) -> Option<Tile> {
         let tile = self.get_board_tile(pos);
         if tile.is_some() { Some(tile) } else { None }
-    }
-
-    pub unsafe fn get_tile_unchecked(&self, pos: Pos) -> Tile {
-        unsafe { *self.grid_2d.get_unchecked(pos.row).get_unchecked(pos.col) }
     }
 
     pub fn get_multiplier(&self, pos: Pos) -> Option<Multiplier> {

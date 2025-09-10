@@ -27,41 +27,6 @@ pub struct Move {
 }
 
 impl Move {
-    pub fn rack_tiles_count(&self) -> usize {
-        let mut count = 0;
-        let mut bits = self.used_bits;
-        while bits != 0 {
-            let i = bits.trailing_zeros() as usize;
-            if matches!(self.tiles_data[i].1, Some(PlayedTile::FromRack(_))) {
-                count += 1;
-            }
-            bits &= bits - 1;
-        }
-        count
-    }
-
-    pub fn to_display(&self) -> (String, Pos, Vec<PlayedTile>) {
-        let mut word = Vec::with_capacity(BOARD_TILES);
-        let mut tiles = Vec::with_capacity(BOARD_TILES);
-
-        for i in 0..BOARD_TILES {
-            if self.used_bits & (1 << i) != 0 {
-                word.push(self.tiles_data[i].0);
-                if let Some(tile) = self.tiles_data[i].1 {
-                    tiles.push(tile);
-                }
-            }
-        }
-
-        let word_start_idx = self.used_bits.trailing_zeros() as usize;
-        let word_start = match self.direction {
-            Direction::Horizontal => Pos::new(self.pos.row, word_start_idx),
-            Direction::Vertical => Pos::new(word_start_idx, self.pos.col),
-        };
-
-        (String::from_utf8_lossy(&word).to_string(), word_start, tiles)
-    }
-
     pub fn get_word_string(&self) -> String {
         let mut word = Vec::with_capacity(BOARD_TILES);
         for i in 0..BOARD_TILES {
