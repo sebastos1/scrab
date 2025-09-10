@@ -3,8 +3,8 @@ mod engine;
 use macroquad::prelude::*;
 
 const MARGIN: f32 = 50.0;
-const WINDOW_WIDTH: f32 = board::BOARD_SIZE + MARGIN * 2.0 + engine::SIDEBAR_WIDTH + MARGIN;
-const WINDOW_HEIGHT: f32 = board::BOARD_SIZE + MARGIN * 2.0 + 180.0;
+const WINDOW_WIDTH: f32 = board::BOARD_SIZE_PX + MARGIN * 2.0 + engine::SIDEBAR_WIDTH + MARGIN;
+const WINDOW_HEIGHT: f32 = board::BOARD_SIZE_PX + MARGIN * 2.0 + 180.0;
 pub const BACKGROUND_COLOR: Color = Color::from_hex(0x071830);
 
 pub struct UI {

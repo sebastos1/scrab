@@ -17,3 +17,4 @@ rand = "0.9.2"
 # fst-gaddag = { git = "https://github.com/amedeedaboville/fst-gaddag.git" }
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.9.1", features = ["cuda"] }
 candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.9.1" }
+bincode = "2.0.1"

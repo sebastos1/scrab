@@ -1,26 +1,19 @@
-use crate::engine::anchors::CrossChecksExt;
+use super::anchors::CrossChecks;
+use crate::Direction;
 use crate::game::board::Multiplier;
 use crate::{
-    GADDAG,
-    engine::{Pos, anchors::CrossChecks},
+    GADDAG, Pos,
     game::{
-        board::{BOARD_TILES, Board},
+        board::{BOARD_SIZE, Board},
         rack::Rack,
         tile::Tile,
     },
 };
-use fst::raw::CompiledAddr;
-
-#[derive(Debug, Clone, Copy)]
-pub enum Direction {
-    Horizontal,
-    Vertical,
-}
 
 #[derive(Debug, Clone)]
 pub struct Move {
     pub used_bits: u16, // bitmask of used tiles
-    pub tiles_data: [(u8, Option<PlayedTile>); BOARD_TILES],
+    pub tiles_data: [(u8, Option<PlayedTile>); BOARD_SIZE],
     pub pos: Pos,
     pub direction: Direction,
     pub score: u16,
@@ -28,8 +21,8 @@ pub struct Move {
 
 impl Move {
     pub fn get_word_string(&self) -> String {
-        let mut word = Vec::with_capacity(BOARD_TILES);
-        for i in 0..BOARD_TILES {
+        let mut word = Vec::with_capacity(BOARD_SIZE);
+        for i in 0..BOARD_SIZE {
             if self.used_bits & (1 << i) != 0 {
                 word.push(self.tiles_data[i].0);
             }
@@ -51,7 +44,7 @@ pub enum PlayedTile {
 }
 
 struct MoveBuffer {
-    data: [(u8, Option<PlayedTile>); BOARD_TILES],
+    data: [(u8, Option<PlayedTile>); BOARD_SIZE],
     used_bits: u16,
     played_tiles_count: u8, // has a tile from rack
 }
@@ -59,7 +52,7 @@ struct MoveBuffer {
 impl MoveBuffer {
     fn new() -> Self {
         MoveBuffer {
-            data: [(0, None); BOARD_TILES],
+            data: [(0, None); BOARD_SIZE],
             used_bits: 0,
             played_tiles_count: 0,
         }
@@ -90,7 +83,7 @@ impl MoveBuffer {
         let mut word_multiplier = 1u16;
         let mut cross_scores = 0u16;
 
-        for i in 0..BOARD_TILES {
+        for i in 0..BOARD_SIZE {
             if self.used_bits & (1 << i) == 0 {
                 continue;
             }
@@ -124,7 +117,7 @@ impl MoveBuffer {
                     };
 
                     let cross_check = unsafe { *cross_checks.get_unchecked(pos.row).get_unchecked(pos.col) };
-                    let cross_score = CrossChecks::get_score(cross_check) as u16;
+                    let cross_score = cross_check.score() as u16;
                     if cross_score > 0 {
                         cross_scores += match board.get_multiplier(pos) {
                             Some(Multiplier::DoubleLetter) => cross_score + 2 * letter_score,
@@ -150,21 +143,18 @@ pub struct MoveGenerator {
 }
 
 impl MoveGenerator {
-    pub fn new(board: Board, rack: Rack) -> Self {
-        Self { board, rack }
+    pub fn run(board: Board, rack: Rack) -> Vec<Move> {
+        let generator = MoveGenerator { board, rack };
+        generator.generate_moves()
     }
 
     // we start from a board, with an otherwise empty slate
     pub fn generate_moves(&self) -> Vec<Move> {
-        let start = std::time::Instant::now();
         let (h_anchors, h_allowed) = super::anchors::find_anchors(&self.board, &Direction::Horizontal);
         let (v_anchors, v_allowed) = super::anchors::find_anchors(&self.board, &Direction::Vertical);
-        let duration = start.elapsed();
 
         let mut moves = Vec::new();
         let mut rack = self.rack.clone();
-
-        let anchor_count = h_anchors.len() + v_anchors.len();
 
         for anchor_pos in h_anchors {
             self.check_anchors(Direction::Horizontal, &mut moves, &mut rack, anchor_pos, &v_allowed);
@@ -172,17 +162,16 @@ impl MoveGenerator {
         for anchor_pos in v_anchors {
             self.check_anchors(Direction::Vertical, &mut moves, &mut rack, anchor_pos, &h_allowed);
         }
-        let duration3 = start.elapsed();
 
-        println!(
-            "{} anchors in {:.2?}, {} moves in  {:.2?}",
-            anchor_count,
-            duration,
-            moves.len(),
-            duration3
-        );
-
-        // filter moves ?
+        // filter moves
+        // use rand::Rng;
+        // if !moves.is_empty() {
+        //     let mut rng = rand::rng();
+        //     let random_index = rng.random_range(0..moves.len());
+        //     let selected_move = moves[random_index].clone();
+        //     moves.clear();
+        //     moves.push(selected_move);
+        // }
 
         moves
     }
@@ -218,7 +207,7 @@ impl MoveGenerator {
 
         // we start from the suffix node, which will always be valid. hopefully.
         let mut current_node = GADDAG.0.as_fst().root().addr();
-        for i in (0..BOARD_TILES).rev() {
+        for i in (0..BOARD_SIZE).rev() {
             if move_buffer.used_bits & (1 << i) != 0 {
                 let byte = move_buffer.data[i].0;
                 let node = &GADDAG.0.as_fst().node(current_node);
@@ -256,7 +245,7 @@ impl MoveGenerator {
         suffix_offset: usize,
         offset: i8,
         explore_dir: ExploreDir,
-        current_node: CompiledAddr,
+        current_node: fst::raw::CompiledAddr,
         placed_tiles_seen: bool,
     ) {
         let offset_dir = match direction {
@@ -340,7 +329,7 @@ impl MoveGenerator {
         }
 
         let cross_check = unsafe { *cross_checks.get_unchecked(current_pos.row).get_unchecked(current_pos.col) };
-        let cross_check_mask = CrossChecks::get_mask(cross_check);
+        let cross_check_mask = cross_check.mask();
         GADDAG.for_each_child(current_node, |letter| {
             // if we hit the delimiter, we start looking right instead
             if letter == super::gaddag::DELIMITER {

@@ -1,9 +1,7 @@
-use crate::game::rack::Rack;
-
-use super::tile::Tile;
+use super::{rack::Rack, tile::Tile};
 use rand::seq::SliceRandom;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
 pub struct Bag {
     pub tiles: Vec<Tile>,
 }

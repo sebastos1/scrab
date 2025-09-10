@@ -1,57 +1,45 @@
+use crate::{
+    Direction, GADDAG, Pos,
+    game::board::{BOARD_SIZE, Board},
+};
 use std::collections::HashSet;
 
-use crate::{
-    GADDAG,
-    engine::{Pos, moves::Direction},
-    game::board::{BOARD_TILES, Board},
-};
+#[derive(Debug, Clone, Copy)]
+pub struct CrossCheck(u32);
+impl CrossCheck {
+    pub const fn new() -> Self {
+        Self(0x03FFFFFF) // all letters valid, 0 score
+    }
+
+    #[inline]
+    pub fn mask(self) -> u32 {
+        self.0 & 0x03FFFFFF
+    }
+
+    #[inline]
+    pub fn score(self) -> u8 {
+        (self.0 >> 26) as u8
+    }
+
+    #[inline]
+    pub fn pack(mask: u32, score: u8) -> Self {
+        Self(mask | ((score as u32) << 26))
+    }
+}
 
 // bitmask 0-25 for A-Z and the final bits are used to store the score. swag
 // this gives the score 6 bits, so a max score of 63, which is plenty
-pub type CrossChecks = [[u32; BOARD_TILES]; BOARD_TILES];
+pub type CrossChecks = [[CrossCheck; BOARD_SIZE]; BOARD_SIZE];
 
-pub trait CrossChecksExt {
-    fn all_ones() -> CrossChecks;
-    fn get_mask(value: u32) -> u32;
-    fn get_score(value: u32) -> u8;
-    fn pack(mask: u32, score: u8) -> u32;
-}
-
-impl CrossChecksExt for CrossChecks {
-    fn all_ones() -> CrossChecks {
-        let mut result = CrossChecks::default();
-        for row in 0..BOARD_TILES {
-            for col in 0..BOARD_TILES {
-                result[row][col] = 0x03FFFFFF; // all letters valid, 0 score
-            }
-        }
-        result
-    }
-
-    #[inline]
-    fn get_mask(value: u32) -> u32 {
-        value & 0x03FFFFFF // bottom 26 bits
-    }
-
-    #[inline]
-    fn get_score(value: u32) -> u8 {
-        (value >> 26) as u8 // top 6 bits
-    }
-
-    #[inline]
-    fn pack(mask: u32, score: u8) -> u32 {
-        mask | ((score as u32) << 26)
-    }
+pub fn empty_cross_checks() -> CrossChecks {
+    [[CrossCheck::new(); BOARD_SIZE]; BOARD_SIZE]
 }
 
 // finds both anchors and cross checks  from that direction
 pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChecks) {
     if board.is_empty() {
-        return (vec![Pos::new(7, 7)], CrossChecks::all_ones());
+        return (vec![Pos::new(7, 7)], empty_cross_checks());
     }
-
-    let mut anchors = HashSet::new();
-    let mut cross_checks = CrossChecks::all_ones(); // bitsets for valid letters
 
     let directions = match direction {
         Direction::Horizontal => [(0, -1), (0, 1)], // left, right
@@ -59,6 +47,7 @@ pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChe
     };
 
     // get all unique anchors
+    let mut anchors = HashSet::new();
     for (pos, _) in board.tiles() {
         for &(dir_row, dir_col) in &directions {
             if let Some(neighbor_pos) = pos.offset(dir_row, dir_col) {
@@ -68,6 +57,8 @@ pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChe
             }
         }
     }
+
+    let mut cross_checks = empty_cross_checks(); // bitsets for valid letters
 
     for &pos in &anchors {
         let mut prefix = Vec::new();
@@ -97,7 +88,7 @@ pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChe
         }
 
         if prefix.is_empty() && suffix.is_empty() {
-            cross_checks[pos.row][pos.col] = 0x03FFFFFF; // everything valid, 0 score
+            CrossCheck::new();
             continue;
         }
 
@@ -110,7 +101,7 @@ pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChe
                 valid_letters |= 1 << (c - b'A');
             }
         }
-        cross_checks[pos.row][pos.col] = CrossChecks::pack(valid_letters, cross_score.min(63));
+        cross_checks[pos.row][pos.col] = CrossCheck::pack(valid_letters, cross_score.min(63));
     }
 
     (anchors.into_iter().collect(), cross_checks)

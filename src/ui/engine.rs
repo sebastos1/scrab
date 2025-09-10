@@ -1,21 +1,17 @@
+use super::{
+    MARGIN,
+    board::{BOARD_SIZE_PX, CELL_SIZE},
+};
 use macroquad::prelude::*;
-
-use crate::{
-    engine::{
-        Pos,
-        moves::{Direction, Move, PlayedTile},
-    },
-    game::board::BOARD_TILES,
-    ui::{
-        MARGIN,
-        board::{BOARD_SIZE, CELL_SIZE},
-    },
+use scrab::{
+    BOARD_SIZE, Direction, Pos,
+    engine::moves::{Move, PlayedTile},
 };
 
 const PLAYER_HEADER_HEIGHT: f32 = 40.0;
-pub const SIDEBAR_X: f32 = MARGIN * 2. + BOARD_SIZE;
+pub const SIDEBAR_X: f32 = MARGIN * 2. + BOARD_SIZE_PX;
 pub const SIDEBAR_WIDTH: f32 = 280.0;
-pub const MOVE_LIST_HEIGHT: f32 = BOARD_SIZE - PLAYER_HEADER_HEIGHT - MARGIN;
+pub const MOVE_LIST_HEIGHT: f32 = BOARD_SIZE_PX - PLAYER_HEADER_HEIGHT - MARGIN;
 pub const MOVE_LIST_LINE_HEIGHT: f32 = 25.0;
 const SCROLLBAR_WIDTH: f32 = 10.0;
 const VISIBLE_MOVES: usize = (MOVE_LIST_HEIGHT / MOVE_LIST_LINE_HEIGHT) as usize;
@@ -143,7 +139,7 @@ impl super::UI {
         };
 
         let mut tile_offset = 0;
-        for i in 0..BOARD_TILES {
+        for i in 0..BOARD_SIZE {
             if mv.used_bits & (1 << i) != 0 {
                 let (row, col) = match mv.direction {
                     Direction::Horizontal => (start_pos.row, start_pos.col + tile_offset),

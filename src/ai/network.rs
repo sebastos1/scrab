@@ -1,7 +1,8 @@
 use super::CHANNELS;
 use crate::{
+    BOARD_SIZE,
     ai::{game_to_tensor, games_to_batch_tensor},
-    game::{Game, board::BOARD_TILES},
+    game::Game,
 };
 use candle_core::{D, DType, Device, Result, Tensor};
 use candle_nn::{BatchNorm, BatchNormConfig, Conv2d, Conv2dConfig, Linear, ModuleT, VarBuilder, VarMap, batch_norm, conv2d, linear};
@@ -10,7 +11,7 @@ use candle_nn::{BatchNorm, BatchNormConfig, Conv2d, Conv2dConfig, Linear, Module
 const NUM_FILTERS: usize = 64;
 const NUM_BLOCKS: usize = 10;
 const VALUE_HEAD_DIM: usize = 128;
-const BATCH_SIZE: usize = 512;
+const BATCH_SIZE: usize = 1024;
 
 pub struct Network {
     device: Device,
@@ -22,7 +23,7 @@ pub struct Network {
     fc1: Linear,
     fc2: Linear,
     fc_out: Linear,
-    varmap: VarMap,
+    _varmap: VarMap,
 }
 
 impl Network {
@@ -53,7 +54,7 @@ impl Network {
         };
         let value_conv = conv2d(NUM_FILTERS, 1, 1, value_cfg, vb.pp("value_conv"))?;
         let value_bn = batch_norm(1, BatchNormConfig::default(), vb.pp("value_bn"))?;
-        let fc1 = linear(BOARD_TILES * BOARD_TILES, VALUE_HEAD_DIM, vb.pp("fc1"))?;
+        let fc1 = linear(BOARD_SIZE * BOARD_SIZE, VALUE_HEAD_DIM, vb.pp("fc1"))?;
         let fc2 = linear(VALUE_HEAD_DIM, VALUE_HEAD_DIM / 2, vb.pp("fc2"))?;
         let fc_out = linear(VALUE_HEAD_DIM / 2, 1, vb.pp("fc_out"))?;
 
@@ -67,7 +68,7 @@ impl Network {
             fc1,
             fc2,
             fc_out,
-            varmap: varmap.clone(),
+            _varmap: varmap.clone(),
         })
     }
 

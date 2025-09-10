@@ -1,5 +1,5 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Tile(pub u8);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, bincode::Decode, bincode::Encode)]
+pub struct Tile(u8);
 
 impl Tile {
     const EMPTY: u8 = 0;

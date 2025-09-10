@@ -1,10 +1,10 @@
 use super::tile::Tile;
-use crate::engine::Pos;
+use crate::Pos;
 
-pub const BOARD_TILES: usize = 15;
+pub const BOARD_SIZE: usize = 15;
 // pub const START_POS: Pos = Pos { row: 7, col: 7 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, bincode::Decode, bincode::Encode)]
 pub enum Multiplier {
     DoubleLetter,
     TripleLetter,
@@ -12,15 +12,15 @@ pub enum Multiplier {
     TripleWord,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
 pub struct Board {
-    grid_2d: [[Tile; BOARD_TILES]; BOARD_TILES],
-    multipliers: [[Option<Multiplier>; BOARD_TILES]; BOARD_TILES],
+    grid_2d: [[Tile; BOARD_SIZE]; BOARD_SIZE],
+    multipliers: [[Option<Multiplier>; BOARD_SIZE]; BOARD_SIZE],
 }
 
 impl Board {
     pub fn new() -> Self {
-        let mut multipliers = [[None; BOARD_TILES]; BOARD_TILES];
+        let mut multipliers = [[None; BOARD_SIZE]; BOARD_SIZE];
         let triple_word = [(0, 0), (0, 7), (0, 14), (7, 0), (7, 14), (14, 0), (14, 7), (14, 14)];
         for &(row, col) in &triple_word {
             multipliers[row][col] = Some(Multiplier::TripleWord);
@@ -98,14 +98,14 @@ impl Board {
         }
 
         Self {
-            grid_2d: [[Tile::empty(); BOARD_TILES]; BOARD_TILES],
+            grid_2d: [[Tile::empty(); BOARD_SIZE]; BOARD_SIZE],
             multipliers,
         }
     }
 
     pub fn place_tile(&mut self, pos: Pos, tile: Tile) -> bool {
         let (row, col) = (pos.row, pos.col);
-        if row < BOARD_TILES && col < BOARD_TILES && self.grid_2d[row][col].is_empty() {
+        if row < BOARD_SIZE && col < BOARD_SIZE && self.grid_2d[row][col].is_empty() {
             self.grid_2d[row][col] = tile;
             true
         } else {
@@ -114,7 +114,7 @@ impl Board {
     }
 
     pub fn get_board_tile(&self, pos: Pos) -> Tile {
-        if pos.row < BOARD_TILES && pos.col < BOARD_TILES {
+        if pos.row < BOARD_SIZE && pos.col < BOARD_SIZE {
             self.grid_2d[pos.row][pos.col]
         } else {
             Tile::empty()
@@ -127,7 +127,7 @@ impl Board {
     }
 
     pub fn get_multiplier(&self, pos: Pos) -> Option<Multiplier> {
-        if pos.row < BOARD_TILES && pos.col < BOARD_TILES {
+        if pos.row < BOARD_SIZE && pos.col < BOARD_SIZE {
             return self.multipliers[pos.row][pos.col];
         }
         None
@@ -147,8 +147,8 @@ impl Board {
     // gets filled tiles
     pub fn tiles(&self) -> Vec<(Pos, Tile)> {
         let mut tiles = Vec::new();
-        for row in 0..BOARD_TILES {
-            for col in 0..BOARD_TILES {
+        for row in 0..BOARD_SIZE {
+            for col in 0..BOARD_SIZE {
                 let tile = self.grid_2d[row][col];
                 if tile.is_some() {
                     tiles.push((Pos::new(row, col), tile));

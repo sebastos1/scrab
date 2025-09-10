@@ -17,9 +17,10 @@ output:
 */
 
 pub mod network;
+pub mod training;
 
-use crate::engine::Pos;
-use crate::game::{Game, board::BOARD_TILES};
+use crate::game::Game;
+use crate::{BOARD_SIZE, Pos};
 use candle_core::{Device, Result, Tensor};
 
 const LETTER_TYPES: usize = 27; // 26 letters + 1 blank
@@ -43,7 +44,7 @@ pub fn games_to_batch_tensor(device: &Device, games: &[Game]) -> Result<Tensor> 
         tensor_shape.dims()[3], // width
     ];
 
-    let mut batch_data = Vec::with_capacity(batch_size * CHANNELS * BOARD_TILES * BOARD_TILES);
+    let mut batch_data = Vec::with_capacity(batch_size * CHANNELS * BOARD_SIZE * BOARD_SIZE);
     for game in games {
         let tensor = game_to_tensor(&device, game)?;
         let tensor_data = tensor.flatten_all()?.to_vec1::<f32>()?;
@@ -54,10 +55,10 @@ pub fn games_to_batch_tensor(device: &Device, games: &[Game]) -> Result<Tensor> 
 
 pub fn game_to_tensor(device: &Device, game: &Game) -> Result<Tensor> {
     // one dimensional for my sweet network
-    let mut tensor_data = vec![0f32; BOARD_TILES * BOARD_TILES * CHANNELS];
-    for row in 0..BOARD_TILES {
-        for col in 0..BOARD_TILES {
-            let base_idx = (row * BOARD_TILES + col) * CHANNELS;
+    let mut tensor_data = vec![0f32; BOARD_SIZE * BOARD_SIZE * CHANNELS];
+    for row in 0..BOARD_SIZE {
+        for col in 0..BOARD_SIZE {
+            let base_idx = (row * BOARD_SIZE + col) * CHANNELS;
 
             // one hot board state
             let pos = Pos::new(row, col);
@@ -94,5 +95,5 @@ pub fn game_to_tensor(device: &Device, game: &Game) -> Result<Tensor> {
     }
 
     // [1, channels, height, width]
-    Tensor::from_vec(tensor_data, &[1, CHANNELS, BOARD_TILES, BOARD_TILES], &device)
+    Tensor::from_vec(tensor_data, &[1, CHANNELS, BOARD_SIZE, BOARD_SIZE], &device)
 }

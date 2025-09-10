@@ -2,7 +2,7 @@ use super::tile::Tile;
 
 pub const RACK_TILES: usize = 7;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
 pub struct Rack {
     pub tiles: [Tile; RACK_TILES],
     pub count: u8,
@@ -11,10 +11,10 @@ pub struct Rack {
 
 impl Rack {
     pub fn new(tile_vec: Vec<Tile>) -> Self {
-        let mut tiles = [Tile::empty(); RACK_TILES];
         let count = tile_vec.len().min(RACK_TILES) as u8;
-        let mut mask = 0u32;
 
+        let mut tiles = [Tile::empty(); RACK_TILES];
+        let mut mask = 0u32;
         for (i, tile) in tile_vec.into_iter().take(RACK_TILES).enumerate() {
             tiles[i] = tile;
             if !tile.is_blank() {

@@ -3,17 +3,13 @@ pub mod board;
 pub mod rack;
 pub mod tile;
 
+use self::{bag::Bag, board::Board, rack::Rack, tile::Tile};
 use crate::{
-    engine::{
-        Pos,
-        moves::{Direction, Move, PlayedTile},
-    },
-    game::{bag::Bag, board::BOARD_TILES, tile::Tile},
+    BOARD_SIZE, Direction, Pos,
+    engine::moves::{Move, PlayedTile},
 };
-use board::Board;
-use rack::Rack;
 
-#[derive(Clone)]
+#[derive(Clone, bincode::Decode, bincode::Encode)]
 pub struct Game {
     pub board: Board,
     pub bag: Bag,
@@ -23,24 +19,28 @@ pub struct Game {
     pub zeroed_turns: u8,
 }
 
-pub fn init() -> Game {
-    let board = Board::new();
-    let mut bag = Bag::new();
-    let racks = [Rack::new(bag.draw_tiles(7)), Rack::new(bag.draw_tiles(7))];
-    Game {
-        board,
-        racks,
-        scores: [0, 0],
-        current_player: 0,
-        bag,
-        zeroed_turns: 0,
-    }
-}
-
 impl Game {
-    pub fn next_turn(&mut self) {
+    pub fn init() -> Self {
+        let board = Board::new();
+        let mut bag = Bag::new();
+        let racks = [Rack::new(bag.draw_tiles(7)), Rack::new(bag.draw_tiles(7))];
+        Game {
+            board,
+            racks,
+            scores: [0, 0],
+            current_player: 0,
+            bag,
+            zeroed_turns: 0,
+        }
+    }
+
+    pub fn is_over(&self) -> bool {
+        self.zeroed_turns >= 6 || (self.bag.tiles.is_empty() && (self.racks[0].is_empty() || self.racks[1].is_empty()))
+    }
+
+    fn next_turn(&mut self) {
         self.current_player = (self.current_player + 1) % 2;
-        if self.zeroed_turns >= 6 || (self.bag.tiles.is_empty() && (self.racks[0].is_empty() || self.racks[1].is_empty())) {
+        if self.is_over() {
             let (winner, scores) = self.end_game();
             println!("Game over! Winner: {:?}, Scores: {:?}", winner, scores);
         }
@@ -76,7 +76,7 @@ impl Game {
         )
     }
 
-    pub fn place_move(&mut self, mv: &Move) {
+    fn place_move(&mut self, mv: &Move) {
         let word_start_idx = mv.used_bits.trailing_zeros() as usize;
         let start_pos = match mv.direction {
             Direction::Horizontal => Pos::new(mv.pos.row, word_start_idx),
@@ -86,7 +86,7 @@ impl Game {
         let mut tile_offset = 0;
         let mut tiles_from_rack = Vec::new();
 
-        for i in 0..BOARD_TILES {
+        for i in 0..BOARD_SIZE {
             if mv.used_bits & (1 << i) != 0 {
                 if let Some(PlayedTile::FromRack(tile)) = mv.tiles_data[i].1 {
                     let pos = match mv.direction {
@@ -137,10 +137,16 @@ impl Game {
         true
     }
 
+    // simulation helpers
     // gives a copy of the current game state with the move applied
     pub fn simulate_move(&self, mv: &Move) -> Game {
         let mut simulated = self.clone();
         simulated.place_move(mv);
         simulated
+    }
+
+    pub fn simulate_swap(&self, tiles: Vec<Tile>) -> Option<Game> {
+        let mut simulated = self.clone();
+        if simulated.exchange(tiles) { Some(simulated) } else { None }
     }
 }

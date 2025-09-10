@@ -1,16 +1,16 @@
 use super::MARGIN;
-use crate::engine::Pos;
-use crate::game::{
+use macroquad::prelude::*;
+use scrab::Pos;
+use scrab::game::{
     bag::Bag,
-    board::{BOARD_TILES, Board, Multiplier},
+    board::{BOARD_SIZE, Board, Multiplier},
     rack::Rack,
     tile::Tile,
 };
-use macroquad::prelude::*;
 
-pub const BOARD_SIZE: f32 = 600.0;
+pub const BOARD_SIZE_PX: f32 = 600.0;
 const BOARD_PADDING: f32 = 10.0;
-pub const CELL_SIZE: f32 = BOARD_SIZE / BOARD_TILES as f32;
+pub const CELL_SIZE: f32 = BOARD_SIZE_PX / BOARD_SIZE as f32;
 pub const TILE_SIZE: f32 = CELL_SIZE * 0.9;
 const CORNER_RADIUS: f32 = 6.0;
 
@@ -129,13 +129,13 @@ impl super::UI {
         self.draw_rounded_tile(
             start_x - BOARD_PADDING,
             start_y - BOARD_PADDING,
-            BOARD_SIZE + BOARD_PADDING * 2.,
+            BOARD_SIZE_PX + BOARD_PADDING * 2.,
             CORNER_RADIUS * 2.0,
             BOARD_COLOR,
         );
 
-        for row in 0..BOARD_TILES {
-            for col in 0..BOARD_TILES {
+        for row in 0..BOARD_SIZE {
+            for col in 0..BOARD_SIZE {
                 let pos = Pos::new(row, col);
                 let (tile_x, tile_y) = self.tile_position(pos);
                 if let Some(tile) = board.get_tile(pos) {
@@ -150,7 +150,7 @@ impl super::UI {
     pub fn draw_rack(&self, rack: &Rack, selected_indices: &mut Vec<usize>) {
         for (i, &tile) in rack.tiles().iter().enumerate() {
             let x = MARGIN + i as f32 * (CELL_SIZE + 5.0);
-            let y = BOARD_SIZE + MARGIN * 2.0;
+            let y = BOARD_SIZE_PX + MARGIN * 2.0;
 
             let is_selected = selected_indices.contains(&i);
             if is_mouse_button_pressed(MouseButton::Left) {
@@ -178,7 +178,7 @@ impl super::UI {
             draw_text_ex(
                 &text,
                 hint_x,
-                BOARD_SIZE + MARGIN * 3.0 + CELL_SIZE + 20.0,
+                BOARD_SIZE_PX + MARGIN * 3.0 + CELL_SIZE + 20.0,
                 TextParams {
                     font: self.font.as_ref(),
                     font_size: 20,
@@ -192,8 +192,8 @@ impl super::UI {
     }
 
     pub fn draw_bag(&self, bag: &Bag) {
-        let bag_x = MARGIN + BOARD_SIZE + MARGIN;
-        let bag_y = MARGIN + BOARD_SIZE + MARGIN; // lel
+        let bag_x = MARGIN + BOARD_SIZE_PX + MARGIN;
+        let bag_y = MARGIN + BOARD_SIZE_PX + MARGIN; // lel
         let mini_tile_size = 20.0;
         let spacing = 25.0;
         let grid_cols = 6;
