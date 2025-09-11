@@ -6,6 +6,8 @@ use ui::*;
 
 #[macroquad::main(get_window_config)]
 async fn main() {
+    let record = scrab::ai::data::test();
+
     let mut game = Game::init();
     // let network = Network::init().unwrap();
 
@@ -14,6 +16,8 @@ async fn main() {
     let mut ui = UI::new().await;
     let mut board_updated = true;
     let mut selected_rack_tiles: Vec<usize> = Vec::new();
+
+    let mut replay_index = 0;
 
     loop {
         if board_updated {
@@ -56,6 +60,30 @@ async fn main() {
             if game.exchange(tiles_to_exchange) {
                 board_updated = true;
             };
+        }
+
+        if is_key_pressed(KeyCode::D) {
+            if replay_index < record.moves.len() {
+                let game_move = &record.moves[replay_index];
+
+                match &game_move.action {
+                    scrab::ai::data::Action::Move(mv) => {
+                        game.play_move(mv);
+                        board_updated = true;
+                    }
+                    scrab::ai::data::Action::Pass => {
+                        game.pass_turn();
+                        board_updated = true;
+                    }
+                    scrab::ai::data::Action::Swap(tiles) => {
+                        game.exchange(tiles.clone());
+                        board_updated = true;
+                    }
+                }
+
+                replay_index += 1;
+                println!("Applied move {}", replay_index);
+            }
         }
 
         next_frame().await

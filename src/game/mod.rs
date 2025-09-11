@@ -4,10 +4,7 @@ pub mod rack;
 pub mod tile;
 
 use self::{bag::Bag, board::Board, rack::Rack, tile::Tile};
-use crate::{
-    BOARD_SIZE, Direction, Pos,
-    engine::moves::{Move, PlayedTile},
-};
+use crate::engine::moves::{Move, PlayedTile};
 
 #[derive(Clone, bincode::Decode, bincode::Encode)]
 pub struct Game {
@@ -77,38 +74,26 @@ impl Game {
     }
 
     fn place_move(&mut self, mv: &Move) {
-        let word_start_idx = mv.used_bits.trailing_zeros() as usize;
-        let start_pos = match mv.direction {
-            Direction::Horizontal => Pos::new(mv.pos.row, word_start_idx),
-            Direction::Vertical => Pos::new(word_start_idx, mv.pos.col),
-        };
-
-        let mut tile_offset = 0;
         let mut tiles_from_rack = Vec::new();
 
-        for i in 0..BOARD_SIZE {
-            if mv.used_bits & (1 << i) != 0 {
-                if let Some(PlayedTile::FromRack(tile)) = mv.tiles_data[i].1 {
-                    let pos = match mv.direction {
-                        Direction::Horizontal => Pos::new(start_pos.row, start_pos.col + tile_offset),
-                        Direction::Vertical => Pos::new(start_pos.row + tile_offset, start_pos.col),
-                    };
-                    self.board.place_tile(pos, tile);
-                    tiles_from_rack.push(tile);
-                }
-                tile_offset += 1;
+        for (pos, played_tile) in mv.tile_positions() {
+            if let PlayedTile::Rack(tile) = played_tile {
+                self.board.place_tile(pos, tile);
+                tiles_from_rack.push(tile);
             }
         }
 
+        // Remove tiles from rack
         for tile in tiles_from_rack {
             self.racks[self.current_player].remove_tile(tile);
         }
 
+        // Update score
         if mv.score != 0 {
             self.zeroed_turns = 0;
             self.scores[self.current_player] += mv.score;
         } else {
-            self.zeroed_turns += 1; // technically possible (blank next to a blank)
+            self.zeroed_turns += 1;
         }
     }
 

@@ -4,7 +4,7 @@ use super::{
 };
 use macroquad::prelude::*;
 use scrab::{
-    BOARD_SIZE, Direction, Pos,
+    Direction,
     engine::moves::{Move, PlayedTile},
 };
 
@@ -132,26 +132,10 @@ impl super::UI {
     }
 
     pub fn draw_move_preview(&self, mv: &Move) {
-        let word_start_idx = mv.used_bits.trailing_zeros() as usize;
-        let start_pos = match mv.direction {
-            Direction::Horizontal => Pos::new(mv.pos.row, word_start_idx),
-            Direction::Vertical => Pos::new(word_start_idx, mv.pos.col),
-        };
-
-        let mut tile_offset = 0;
-        for i in 0..BOARD_SIZE {
-            if mv.used_bits & (1 << i) != 0 {
-                let (row, col) = match mv.direction {
-                    Direction::Horizontal => (start_pos.row, start_pos.col + tile_offset),
-                    Direction::Vertical => (start_pos.row + tile_offset, start_pos.col),
-                };
-
-                if let Some(PlayedTile::FromRack(tile)) = mv.tiles_data[i].1 {
-                    let (tile_x, tile_y) = self.tile_position(Pos::new(row, col));
-                    self.draw_letter_tile(tile_x, tile_y, CELL_SIZE, tile, true);
-                }
-
-                tile_offset += 1;
+        for (pos, played_tile) in mv.tile_positions() {
+            if let PlayedTile::Rack(tile) = played_tile {
+                let (tile_x, tile_y) = self.tile_position(pos);
+                self.draw_letter_tile(tile_x, tile_y, CELL_SIZE, tile, true);
             }
         }
     }

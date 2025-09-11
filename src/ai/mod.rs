@@ -16,8 +16,9 @@ output:
 - scalar for how good this action is
 */
 
+pub mod data;
 pub mod network;
-pub mod training;
+// pub mod training;
 
 use crate::game::Game;
 use crate::{BOARD_SIZE, Pos};

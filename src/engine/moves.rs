@@ -9,25 +9,29 @@ use crate::{
         tile::Tile,
     },
 };
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone)]
 pub struct Move {
-    pub used_bits: u16, // bitmask of used tiles
-    pub tiles_data: [(u8, Option<PlayedTile>); BOARD_SIZE],
+    pub tiles_data: SmallVec<[PlayedTile; 7]>,
     pub pos: Pos,
     pub direction: Direction,
     pub score: u16,
 }
 
 impl Move {
+    pub fn tile_positions(&self) -> impl Iterator<Item = (Pos, PlayedTile)> + '_ {
+        self.tiles_data.iter().enumerate().map(|(i, &tile)| {
+            let pos = match self.direction {
+                Direction::Horizontal => Pos::new(self.pos.row, self.pos.col + i),
+                Direction::Vertical => Pos::new(self.pos.row + i, self.pos.col),
+            };
+            (pos, tile)
+        })
+    }
+
     pub fn get_word_string(&self) -> String {
-        let mut word = Vec::with_capacity(BOARD_SIZE);
-        for i in 0..BOARD_SIZE {
-            if self.used_bits & (1 << i) != 0 {
-                word.push(self.tiles_data[i].0);
-            }
-        }
-        String::from_utf8_lossy(&word).to_string()
+        self.tiles_data.iter().map(|tile| tile.byte() as char).collect()
     }
 }
 
@@ -39,39 +43,48 @@ enum ExploreDir {
 
 #[derive(Debug, Clone, Copy)]
 pub enum PlayedTile {
-    FromRack(Tile),
-    FromBoard(Tile), // known for scoring
+    Rack(Tile),
+    Board(Tile), // known for scoring
+}
+
+impl PlayedTile {
+    fn byte(&self) -> u8 {
+        match self {
+            PlayedTile::Rack(tile) => tile.byte(),
+            PlayedTile::Board(tile) => tile.byte(),
+        }
+    }
 }
 
 struct MoveBuffer {
-    data: [(u8, Option<PlayedTile>); BOARD_SIZE],
-    used_bits: u16,
+    data: [Option<PlayedTile>; BOARD_SIZE],
     played_tiles_count: u8, // has a tile from rack
 }
 
 impl MoveBuffer {
     fn new() -> Self {
         MoveBuffer {
-            data: [(0, None); BOARD_SIZE],
-            used_bits: 0,
+            data: [None; BOARD_SIZE],
             played_tiles_count: 0,
         }
     }
 
-    fn set(&mut self, pos: usize, letter: u8, tile: PlayedTile) {
-        self.data[pos] = (letter, Some(tile));
-        self.used_bits |= 1 << pos;
-        if matches!(tile, PlayedTile::FromRack(_)) {
+    fn set(&mut self, pos: usize, tile: PlayedTile) {
+        self.data[pos] = Some(tile);
+        if matches!(tile, PlayedTile::Rack(_)) {
             self.played_tiles_count += 1;
         }
     }
 
     fn unset(&mut self, pos: usize) {
-        if matches!(self.data[pos].1, Some(PlayedTile::FromRack(_))) {
+        if matches!(self.data[pos], Some(PlayedTile::Rack(_))) {
             self.played_tiles_count -= 1;
         }
-        self.data[pos] = (0, None);
-        self.used_bits &= !(1 << pos);
+        self.data[pos] = None;
+    }
+
+    fn is_occupied(&self, pos: usize) -> bool {
+        self.data[pos].is_some()
     }
 
     fn has_played_tile(&self) -> bool {
@@ -84,7 +97,7 @@ impl MoveBuffer {
         let mut cross_scores = 0u16;
 
         for i in 0..BOARD_SIZE {
-            if self.used_bits & (1 << i) == 0 {
+            if !self.is_occupied(i) {
                 continue;
             }
 
@@ -93,13 +106,13 @@ impl MoveBuffer {
                 Direction::Vertical => Pos::new(i, anchor_pos.col),
             };
 
-            if let Some(played_tile) = self.data[i].1 {
-                if let PlayedTile::FromBoard(tile) = played_tile {
+            if let Some(played_tile) = self.data[i] {
+                if let PlayedTile::Board(tile) = played_tile {
                     main_score += tile.points() as u16;
                     continue;
                 }
 
-                if let PlayedTile::FromRack(tile) = played_tile {
+                if let PlayedTile::Rack(tile) = played_tile {
                     let letter_score = tile.points() as u16;
 
                     main_score += match board.get_multiplier(pos) {
@@ -193,7 +206,7 @@ impl MoveGenerator {
                     Direction::Horizontal => next_pos.col,
                     Direction::Vertical => next_pos.row,
                 };
-                move_buffer.set(board_idx, tile.byte(), PlayedTile::FromBoard(tile));
+                move_buffer.set(board_idx, PlayedTile::Board(tile));
                 current_pos = next_pos;
             } else {
                 break;
@@ -208,8 +221,8 @@ impl MoveGenerator {
         // we start from the suffix node, which will always be valid. hopefully.
         let mut current_node = GADDAG.0.as_fst().root().addr();
         for i in (0..BOARD_SIZE).rev() {
-            if move_buffer.used_bits & (1 << i) != 0 {
-                let byte = move_buffer.data[i].0;
+            if move_buffer.is_occupied(i) {
+                let byte = move_buffer.data[i].unwrap().byte();
                 let node = &GADDAG.0.as_fst().node(current_node);
                 if let Some(transition_idx) = node.find_input(byte) {
                     current_node = node.transition_addr(transition_idx);
@@ -289,7 +302,7 @@ impl MoveGenerator {
 
         if let Some(tile) = self.board.get_tile(current_pos) {
             if let Some(next_node) = GADDAG.can_next(current_node, tile.byte()) {
-                move_buffer.set(board_idx, tile.byte(), PlayedTile::FromBoard(tile));
+                move_buffer.set(board_idx, PlayedTile::Board(tile));
 
                 self.explore(
                     moves,
@@ -312,13 +325,15 @@ impl MoveGenerator {
 
         if GADDAG.is_terminal(current_node) && move_buffer.has_played_tile() {
             let score = move_buffer.calculate_score(&self.board, direction, cross_checks, anchor_pos);
+            let tiles_data: SmallVec<[PlayedTile; 7]> = move_buffer.data.iter().filter_map(|&tile| tile).collect();
+            let word_start_idx = move_buffer.data.iter().position(|tile| tile.is_some()).unwrap_or(0);
+            let word_start_pos = match direction {
+                Direction::Horizontal => Pos::new(anchor_pos.row, word_start_idx),
+                Direction::Vertical => Pos::new(word_start_idx, anchor_pos.col),
+            };
             moves.push(Move {
-                used_bits: move_buffer.used_bits,
-                tiles_data: move_buffer.data,
-                pos: Pos {
-                    row: anchor_pos.row,
-                    col: anchor_pos.col,
-                },
+                tiles_data,
+                pos: word_start_pos,
                 direction,
                 score,
             });
@@ -358,7 +373,7 @@ impl MoveGenerator {
 
             // check rack
             if let Some(tile) = rack.take_tile(letter) {
-                move_buffer.set(board_idx, letter, PlayedTile::FromRack(tile));
+                move_buffer.set(board_idx, PlayedTile::Rack(tile));
                 if let Some(next_node) = GADDAG.can_next(current_node, letter) {
                     self.explore(
                         moves,

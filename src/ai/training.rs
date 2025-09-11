@@ -1,18 +1,12 @@
-use bincode::Decode;
-use bincode::Encode;
+use bincode::{Decode, Encode};
 
 use crate::ai::network::Network;
 use crate::engine::moves::Move;
 use crate::engine::moves::MoveGenerator;
 use crate::game::Game;
+use crate::game::rack::Rack;
 use crate::game::tile::Tile;
 use std::path::Path;
-
-#[derive(Clone, Decode, Encode)]
-pub struct TrainingPosition {
-    pub position: Game,
-    pub target_value: f32, // +1 for winner, -1 for loser, 0 for draw
-}
 
 pub fn save_training_data(data: &[TrainingPosition], path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let encoded = bincode::encode_to_vec(data, bincode::config::standard())?;
@@ -51,7 +45,6 @@ pub fn setup_training_data(network: Network, num_games: usize, save_path: &str) 
         handles.push(handle);
     }
 
-    // Collect all results
     let mut all_training_data = Vec::new();
     for handle in handles {
         let thread_data = handle.join().unwrap();
@@ -106,13 +99,6 @@ pub fn collect_training_data(network: &Network, num_games: usize) -> Vec<Trainin
     }
 
     training_data
-}
-
-#[derive(Clone)]
-pub enum Action {
-    Move(Move),
-    Swap(Vec<Tile>),
-    Pass,
 }
 
 pub fn get_best_move(network: &Network, game: &Game, moves: &[Move]) -> Action {
