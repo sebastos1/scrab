@@ -6,7 +6,7 @@ pub mod tile;
 use self::{bag::Bag, board::Board, rack::Rack, tile::Tile};
 use crate::engine::moves::{Move, PlayedTile};
 
-#[derive(Clone, bincode::Decode, bincode::Encode)]
+#[derive(Debug, Clone)]
 pub struct Game {
     pub board: Board,
     pub bag: Bag,
@@ -32,7 +32,7 @@ impl Game {
     }
 
     pub fn is_over(&self) -> bool {
-        self.zeroed_turns >= 6 || (self.bag.tiles.is_empty() && (self.racks[0].is_empty() || self.racks[1].is_empty()))
+        self.zeroed_turns >= 6 || (self.bag.is_empty() && (self.racks[0].is_empty() || self.racks[1].is_empty()))
     }
 
     fn next_turn(&mut self) {
@@ -48,11 +48,11 @@ impl Game {
         let p2_rack_points: u16 = self.racks[1].tiles().iter().map(|t| t.points() as u16).sum();
 
         // player 1 went out
-        if self.racks[0].is_empty() && self.bag.tiles.is_empty() {
+        if self.racks[0].is_empty() && self.bag.is_empty() {
             self.scores[0] += 2 * p2_rack_points;
 
         // player 2 went out
-        } else if self.racks[1].is_empty() && self.bag.tiles.is_empty() {
+        } else if self.racks[1].is_empty() && self.bag.is_empty() {
             self.scores[1] += 2 * p1_rack_points;
 
         // nobody went out
@@ -99,7 +99,7 @@ impl Game {
 
     pub fn play_move(&mut self, mv: &Move) {
         self.place_move(mv);
-        while self.racks[self.current_player].tiles().len() < 7 && !self.bag.tiles.is_empty() {
+        while self.racks[self.current_player].tiles().len() < 7 && !self.bag.is_empty() {
             if let Some(new_tile) = self.bag.draw() {
                 self.racks[self.current_player].add_tile(new_tile);
             }
@@ -113,13 +113,11 @@ impl Game {
         self.next_turn();
     }
 
-    pub fn exchange(&mut self, tiles: Vec<Tile>) -> bool {
-        if !self.bag.swap(&mut self.racks[self.current_player], tiles) {
-            return false;
+    pub fn exchange(&mut self, tiles: Vec<Tile>) {
+        if self.bag.swap(&mut self.racks[self.current_player], tiles) {
+            self.zeroed_turns += 1;
+            self.next_turn();
         }
-        self.zeroed_turns += 1;
-        self.next_turn();
-        true
     }
 
     // simulation helpers
@@ -130,8 +128,9 @@ impl Game {
         simulated
     }
 
-    pub fn simulate_swap(&self, tiles: Vec<Tile>) -> Option<Game> {
+    pub fn simulate_swap(&self, tiles: Vec<Tile>) -> Game {
         let mut simulated = self.clone();
-        if simulated.exchange(tiles) { Some(simulated) } else { None }
+        simulated.exchange(tiles);
+        simulated
     }
 }

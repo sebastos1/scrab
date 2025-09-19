@@ -2,7 +2,7 @@ use super::tile::Tile;
 
 pub const RACK_TILES: usize = 7;
 
-#[derive(Debug, Clone, bincode::Decode, bincode::Encode)]
+#[derive(Debug, Clone)]
 pub struct Rack {
     pub tiles: [Tile; RACK_TILES],
     pub count: u8,

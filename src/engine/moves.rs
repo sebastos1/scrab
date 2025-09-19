@@ -201,7 +201,7 @@ impl MoveGenerator {
         };
 
         while let Some(next_pos) = current_pos.offset(suffix_dir.0, suffix_dir.1) {
-            if let Some(tile) = self.board.get_tile(next_pos) {
+            if let Some(tile) = self.board.get_board_tile(next_pos) {
                 let board_idx = match direction {
                     Direction::Horizontal => next_pos.col,
                     Direction::Vertical => next_pos.row,
@@ -300,7 +300,7 @@ impl MoveGenerator {
             Direction::Vertical => current_pos.row,
         };
 
-        if let Some(tile) = self.board.get_tile(current_pos) {
+        if let Some(tile) = self.board.get_board_tile(current_pos) {
             if let Some(next_node) = GADDAG.can_next(current_node, tile.byte()) {
                 move_buffer.set(board_idx, PlayedTile::Board(tile));
 

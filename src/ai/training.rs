@@ -1,142 +1,86 @@
-use bincode::{Decode, Encode};
-
+use crate::ai::data::PositionsReader;
 use crate::ai::network::Network;
-use crate::engine::moves::Move;
-use crate::engine::moves::MoveGenerator;
-use crate::game::Game;
-use crate::game::rack::Rack;
-use crate::game::tile::Tile;
-use std::path::Path;
+use candle_core::Tensor;
+use candle_nn::{AdamW, Optimizer, ParamsAdamW, loss};
+use rand::{Rng, prelude::SliceRandom};
 
-pub fn save_training_data(data: &[TrainingPosition], path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let encoded = bincode::encode_to_vec(data, bincode::config::standard())?;
-    std::fs::write(path, encoded)?;
+const BATCH_SIZE: usize = 512;
+const EPOCHS: usize = 10;
+
+fn train_batch(
+    network: &mut Network,
+    optimizer: &mut AdamW,
+    board_batch: &Tensor,
+    global_batch: &Tensor,
+    targets: &[f32],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let target_tensor = Tensor::from_vec(targets.to_vec(), &[targets.len()], &network.device)?;
+    let predictions = network.forward(board_batch, global_batch, true)?;
+    let loss = loss::mse(&predictions, &target_tensor)?;
+    optimizer.backward_step(&loss)?;
+    println!("Batch loss: {:.6}", loss.to_scalar::<f32>()?);
     Ok(())
 }
 
-pub fn load_training_data(path: &Path) -> Result<Vec<TrainingPosition>, Box<dyn std::error::Error>> {
-    let data = std::fs::read(path)?;
-    let (examples, _len): (Vec<TrainingPosition>, usize) = bincode::decode_from_slice(&data, bincode::config::standard())?;
-    Ok(examples)
-}
+pub fn train(network: &mut Network, positions_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let reader = PositionsReader::open(positions_path)?;
+    println!("Loaded {} positions", reader.len());
 
-use std::sync::Arc;
-use std::thread;
-pub fn setup_training_data(network: Network, num_games: usize, save_path: &str) {
-    let num_threads = 8;
-    let games_per_thread = num_games / num_threads;
-    let network = Arc::new(network);
+    let mut optimizer = AdamW::new(
+        network.varmap.all_vars(),
+        ParamsAdamW {
+            lr: 0.001,
+            ..Default::default()
+        },
+    )?;
 
-    let mut handles = Vec::new();
+    let mut rng = rand::rng();
+    for epoch in 0..EPOCHS {
+        let mut train_indices: Vec<usize> = (0..reader.len()).collect();
+        train_indices.shuffle(&mut rng);
 
-    for thread_id in 0..num_threads {
-        let network_clone = Arc::clone(&network);
-        let games_to_run = if thread_id == num_threads - 1 {
-            games_per_thread + (num_games % num_threads)
-        } else {
-            games_per_thread
-        };
+        for batch_indices in train_indices.chunks(BATCH_SIZE) {
+            let mut board_data = Vec::with_capacity(batch_indices.len() * 225);
+            let mut global_data = Vec::with_capacity(batch_indices.len() * 56);
+            let mut targets = Vec::with_capacity(batch_indices.len());
 
-        let handle = thread::spawn(move || {
-            println!("Thread {} starting {} games", thread_id, games_to_run);
-            collect_training_data(&network_clone, games_to_run)
-        });
+            for &idx in batch_indices {
+                let pos = reader.get(idx).unwrap();
 
-        handles.push(handle);
-    }
-
-    let mut all_training_data = Vec::new();
-    for handle in handles {
-        let thread_data = handle.join().unwrap();
-        all_training_data.extend(thread_data);
-    }
-
-    println!("Collected {} total training examples", all_training_data.len());
-    save_training_data(&all_training_data, Path::new(save_path)).unwrap();
-}
-
-pub fn collect_training_data(network: &Network, num_games: usize) -> Vec<TrainingPosition> {
-    let mut training_data = Vec::new();
-
-    for i in 0..num_games {
-        let timer = std::time::Instant::now();
-        println!("Playing game {}/{}", i, num_games);
-
-        let mut game_positions = Vec::new();
-        let mut game = Game::init();
-
-        // collection positions
-        while !game.is_over() {
-            game_positions.push((game.clone(), game.current_player));
-
-            let moves = MoveGenerator::run(game.board.clone(), game.racks[game.current_player].clone());
-
-            match get_best_move(network, &game, &moves) {
-                Action::Move(mv) => game.play_move(&mv),
-                Action::Swap(tiles) => {
-                    game.exchange(tiles);
+                for row in 0..15 {
+                    for col in 0..15 {
+                        let val = if rng.random_bool(0.5) {
+                            pos.board[row][col]
+                        } else {
+                            pos.board[col][row]
+                        };
+                        board_data.push(if val == 0 { 0.0 } else { val as f32 / 27.0 });
+                    }
                 }
-                Action::Pass => game.pass_turn(),
+
+                for &count in &pos.rack_counts {
+                    global_data.push(count as f32 / 7.0);
+                }
+                for &count in &pos.bag_counts {
+                    global_data.push(count as f32 / 12.0);
+                }
+                global_data.push(((pos.my_score - pos.opp_score) as f32 / 100.0).tanh());
+                global_data.push(pos.scoreless_turns as f32 / 6.0);
+                targets.push(pos.target_equity / 100.0); // squish
             }
+
+            let board_tensor = Tensor::from_vec(board_data, &[batch_indices.len(), 1, 15, 15], &network.device)?;
+            let global_tensor = Tensor::from_vec(global_data, &[batch_indices.len(), 56], &network.device)?;
+            train_batch(network, &mut optimizer, &board_tensor, &global_tensor, &targets)?;
         }
-
-        // each position is bundled with the game outcome
-        let (winner, _) = game.end_game();
-        for (position, player) in game_positions {
-            let target = match winner {
-                Some(w) if w == player => 1.0, // this player won
-                Some(_) => -1.0,               // this player lost
-                None => 0.0,                   // draw
-            };
-            training_data.push(TrainingPosition {
-                position,
-                target_value: target,
-            });
+        if epoch % 10 == 0 {
+            network.save(&format!("models/checkpoint.safetensors"))?;
         }
-
-        let elapsed = timer.elapsed();
-        println!("Game finished in {:.2?}", elapsed);
+        println!("Epoch {} complete", epoch);
+        let lr = 0.001 * 0.95_f64.powi(epoch as i32); // decay
+        optimizer.set_learning_rate(lr);
     }
 
-    training_data
-}
-
-pub fn get_best_move(network: &Network, game: &Game, moves: &[Move]) -> Action {
-    let mut all_games = Vec::new();
-    let mut actions = Vec::new();
-
-    for mv in moves {
-        all_games.push(game.simulate_move(mv));
-        actions.push(Action::Move(mv.clone()));
-    }
-
-    // passing
-    // all_games.push(game.clone());
-    // actions.push(Action::Pass);
-
-    // let rack_tiles: Vec<_> = game.racks[game.current_player].tiles.into_iter().collect();
-    // for num_tiles in 1..=rack_tiles.len().min(7) {
-    //     let tiles_to_exchange = rack_tiles[..num_tiles].to_vec();
-    //     if let Some(exchange_game) = simulate_swap(game, tiles_to_exchange.clone()) {
-    //         all_games.push(exchange_game);
-    //         actions.push(Action::Swap(tiles_to_exchange));
-    //     }
-    // }
-
-    if actions.is_empty() {
-        return Action::Pass;
-    }
-
-    if let Ok(evaluations) = network.evaluate_batch(&all_games) {
-        let best_idx = evaluations
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(index, _)| index)
-            .unwrap_or(actions.len() - 1);
-
-        actions[best_idx].clone()
-    } else {
-        Action::Pass
-    }
+    network.save(&format!("models/model.safetensors"))?;
+    Ok(())
 }

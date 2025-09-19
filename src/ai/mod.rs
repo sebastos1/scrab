@@ -18,83 +18,68 @@ output:
 
 pub mod data;
 pub mod network;
-// pub mod training;
+pub mod training;
 
 use crate::game::Game;
 use crate::{BOARD_SIZE, Pos};
 use candle_core::{Device, Result, Tensor};
 
-const LETTER_TYPES: usize = 27; // 26 letters + 1 blank
-const RACK_SIZE: usize = LETTER_TYPES; // counts of each letter in rack
-const BAG_SIZE: usize = LETTER_TYPES; // counts of each letter in bag
+use network::{BOARD_CHANNELS, FEATURES};
 
-// channels: board(27) + rack(27) + bag(27) + score_diff(1) + scoreless_ratio(1) = 83
-const CHANNELS: usize = LETTER_TYPES + RACK_SIZE + BAG_SIZE + 1 + 1;
-
-pub fn games_to_batch_tensor(device: &Device, games: &[Game]) -> Result<Tensor> {
+pub fn games_to_tensors(device: &Device, games: &[Game]) -> Result<(Tensor, Tensor)> {
     let batch_size = games.len();
 
-    // check dimensions based on one game
-    let first_tensor = game_to_tensor(&device, &games[0])?;
-    let tensor_shape = first_tensor.shape();
+    let mut board_data = Vec::with_capacity(batch_size * BOARD_CHANNELS * BOARD_SIZE * BOARD_SIZE);
+    let mut global_data = Vec::with_capacity(batch_size * FEATURES);
 
-    let batch_shape = [
-        batch_size,
-        tensor_shape.dims()[1], // channels
-        tensor_shape.dims()[2], // height
-        tensor_shape.dims()[3], // width
-    ];
-
-    let mut batch_data = Vec::with_capacity(batch_size * CHANNELS * BOARD_SIZE * BOARD_SIZE);
     for game in games {
-        let tensor = game_to_tensor(&device, game)?;
-        let tensor_data = tensor.flatten_all()?.to_vec1::<f32>()?;
-        batch_data.extend(tensor_data);
+        let (board_tensor, global_tensor) = game_to_tensors(device, game)?;
+        let board_flat = board_tensor.flatten_all()?.to_vec1::<f32>()?;
+        let global_flat = global_tensor.flatten_all()?.to_vec1::<f32>()?;
+        board_data.extend(board_flat);
+        global_data.extend(global_flat);
     }
-    Tensor::from_vec(batch_data, &batch_shape, &device)
+
+    let board_batch = Tensor::from_vec(board_data, &[batch_size, BOARD_CHANNELS, BOARD_SIZE, BOARD_SIZE], device)?;
+    let global_batch = Tensor::from_vec(global_data, &[batch_size, FEATURES], device)?;
+
+    Ok((board_batch, global_batch))
 }
 
-pub fn game_to_tensor(device: &Device, game: &Game) -> Result<Tensor> {
-    // one dimensional for my sweet network
-    let mut tensor_data = vec![0f32; BOARD_SIZE * BOARD_SIZE * CHANNELS];
+// TODO OPPONENT TILES, DRY UP
+pub fn game_to_tensors(device: &Device, game: &Game) -> Result<(Tensor, Tensor)> {
+    let mut board_data = vec![0f32; BOARD_SIZE * BOARD_SIZE];
     for row in 0..BOARD_SIZE {
         for col in 0..BOARD_SIZE {
-            let base_idx = (row * BOARD_SIZE + col) * CHANNELS;
-
-            // one hot board state
-            let pos = Pos::new(row, col);
-            if let Some(tile) = game.board.get_tile(pos) {
-                let tile_idx = tile.to_index() as usize;
-                if tile_idx < LETTER_TYPES {
-                    tensor_data[base_idx + tile_idx] = 1.0;
-                }
+            if let Some(tile) = game.board.get_board_tile(Pos::new(row, col)) {
+                board_data[row * BOARD_SIZE + col] = (tile.to_index() as f32 + 1.0) / 28.0;
             }
-
-            // current player rack
-            let rack = &game.racks[game.current_player];
-            for tile in rack.tiles() {
-                let rack_idx = base_idx + LETTER_TYPES + tile.to_index() as usize;
-                tensor_data[rack_idx] += 1.0 / 7.0; // max rack size
-            }
-
-            // remaining bag tiles
-            for tile in &game.bag.tiles {
-                let bag_idx = base_idx + LETTER_TYPES * 2 + tile.to_index() as usize;
-                tensor_data[bag_idx] += 1.0 / 12.0; // max tile count
-            }
-
-            // score diff
-            let my_score = game.scores[game.current_player] as f32;
-            let opp_score = game.scores[1 - game.current_player] as f32;
-            let score_diff = ((my_score - opp_score) / 100.0).tanh();
-            tensor_data[base_idx + LETTER_TYPES * 3] = score_diff;
-
-            // scoreless turns
-            let scoreless_ratio = game.zeroed_turns as f32 / 6.0;
-            tensor_data[base_idx + LETTER_TYPES * 3 + 1] = scoreless_ratio;
         }
     }
 
-    // [1, channels, height, width]
-    Tensor::from_vec(tensor_data, &[1, CHANNELS, BOARD_SIZE, BOARD_SIZE], &device)
+    // global data
+    let mut global_data = vec![0f32; FEATURES];
+
+    // rack -> global
+    let rack = &game.racks[game.current_player];
+    for tile in rack.tiles() {
+        global_data[tile.to_index() as usize] += 1.0 / 7.0;
+    }
+
+    for (tile, count) in game.bag.get_tile_counts() {
+        global_data[27 + tile.to_index() as usize] = count as f32 / 12.0;
+    }
+
+    // score gap -> global
+    let my_score = game.scores[game.current_player] as f32;
+    let opp_score = game.scores[1 - game.current_player] as f32;
+    global_data[54] = ((my_score - opp_score) / 100.0).tanh();
+
+    // scoreless turns -> global
+    global_data[55] = game.zeroed_turns as f32 / 6.0;
+
+    let board_tensor = Tensor::from_vec(board_data, &[1, BOARD_CHANNELS, BOARD_SIZE, BOARD_SIZE], device)?;
+    let global_tensor = Tensor::from_vec(global_data, &[1, FEATURES], device)?;
+
+    Ok((board_tensor, global_tensor))
 }

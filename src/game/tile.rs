@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, bincode::Decode, bincode::Encode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Tile(u8);
 
 impl Tile {

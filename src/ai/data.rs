@@ -1,80 +1,28 @@
-/*
-woogles uses "gcg":
->HastyBot: AEEFHRU 8D FEUAR +24 24
->saviosas: ??AEKLN D8 .LANKErs +76 76
-...
->saviosas: EIRS 2E REIS +21 326
->saviosas: (AU) +4 330
-
-I save these in a sqlite db, already with some data from game parsing (fetch.py)
-game_id | winner | gcg | player1 | player2
-*/
-
-use smallvec::SmallVec;
-
 use crate::{
-    Direction, Pos, Tile,
+    Direction, Game, Pos, Tile,
     engine::moves::{Move, PlayedTile},
 };
-
-pub fn test() -> GameRecord {
-    let id = "SUKyN5ec";
-    let winner = 0;
-    let player1 = "HastyBot";
-    let player2 = "marvin";
-    let gcg = "#character-encoding UTF-8
-        #description Created with Macondo
-        #id io.woogles SUKyN5ec
-        #lexicon CSW24
-        #player1 HastyBot HastyBot
-        #player2 marvin Amit Ch
-        >HastyBot: DIOTTUV 8D DIVOT +22 22
-        >marvin: ABHNNXY F8 .AX +29 29
-        >HastyBot: JNOTUVY 7G JUNTO +40 62
-        >marvin: BEHNNTY 8K HENNY +41 70
-        >HastyBot: IILOUVY 9F .YU +30 92
-        >marvin: BEFORTU 6K FORB +24 94
-        >HastyBot: AAIILOV N8 .OVALIA +36 128
-        >marvin: AEENSTU D1 UNSEATE. +70 164
-        >HastyBot: EEIKLSU E10 EUK +23 151
-        >marvin: AEGGIRS 13E SAGGIER +70 234
-        >HastyBot: AEFILRS 4C S.RAFILE +62 213
-        >marvin: ACENQSW 1C Q.ENAS +45 279
-        >HastyBot: AEHIOOT D10 HOO +39 252
-        >marvin: CEIPPRW 3J WIPER +25 304
-        >HastyBot: AEGIIMT 2B MI.AE +35 287
-        >marvin: CDIMNPT L1 DI.T +18 322
-        >HastyBot: ?GIILLT 1L .ILL +15 302
-        >marvin: BCEMNOP J10 MOB. +14 336
-        >HastyBot: ??GITTZ O13 TIZ +40 342
-        >marvin: CDDENPR K11 DE.P +24 360
-        >HastyBot: ??EGRTW M12 EWT +29 371
-        >marvin: ACCDNOR H12 A.ON +18 378
-        >HastyBot: ??EGR 2I hEG.Ra +32 403
-        >HastyBot: (CCDR) +18 421
-        >marvin: CCDR (time) -10 368";
-
-    let record = GameRecord::from_gcg(id.to_string(), Some(winner), gcg, player1.to_string(), player2.to_string()).unwrap();
-
-    println!("moves: {:?}", record.moves);
-
-    record
-}
+use csv::Reader;
+use memmap2::{Mmap, MmapOptions};
+use smallvec::SmallVec;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufWriter, Write},
+};
 
 #[derive(Clone, Debug)]
 pub struct GameRecord {
     pub game_id: String,
-    pub winner: Option<usize>, // 0 or 1, None for draw
     pub moves: Vec<GameMove>,
-    pub player1: String,
-    pub player2: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct GameMove {
     pub player: usize,
     pub action: Action,
-    pub rack: Vec<Tile>, // tiles BEFORE the move
+    pub rack: Vec<Tile>,
+    pub equity: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -84,161 +32,220 @@ pub enum Action {
     Pass,
 }
 
+// Macondo self-play format
+#[derive(serde::Deserialize)]
+pub struct CsvRow {
+    #[serde(rename = "playerID")]
+    pub player_id: String,
+    #[serde(rename = "gameID")]
+    pub game_id: String,
+    pub turn: u32,
+    pub rack: String,
+    pub play: String,
+    pub score: u16,
+    pub equity: f32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct TrainingPosition {
+    pub board: [[u8; 15]; 15], // 225 bytes, board tiles (0=empty, 1-27=tiles)
+    pub rack_counts: [u8; 27], // player rack counts
+    pub bag_counts: [u8; 27],  // unseen tiles
+    pub my_score: u16,
+    pub opp_score: u16,
+    pub scoreless_turns: u8,
+    pub target_equity: f32,
+    _padding: [u8; 3], // padding to align
+}
+
 impl GameRecord {
-    pub fn from_gcg(
-        game_id: String,
-        winner: Option<usize>,
-        gcg_content: &str,
-        player1: String,
-        player2: String,
-    ) -> Result<GameRecord, Box<dyn std::error::Error>> {
-        let mut moves = Vec::new();
+    pub fn from_csv(csv_content: &str) -> Result<Vec<GameRecord>, Box<dyn std::error::Error>> {
+        let mut reader = Reader::from_reader(csv_content.as_bytes());
+        let mut games: HashMap<String, Vec<CsvRow>> = HashMap::new();
 
-        // only parse the move lines since we already have the metadata
-        for line in gcg_content.lines() {
-            let line = line.trim();
-            // ignored:
-            // phoney: >Oreoluwa: EKLLRRV -- -14 256 (must remove the last entry)
-            // >HastyBot:  (challenge) +0 505
-            // >marvin:  (time) -10 330
-            if line.starts_with('>') && (!line.contains("(challenge)") && !line.contains("(time)")) {
-                if line.contains("--") {
-                    moves.pop(); // i'm getting bot games, so i dont think challenges ever miss
-                    continue;
+        for result in reader.deserialize() {
+            let row: CsvRow = result?;
+            games.entry(row.game_id.clone()).or_default().push(row);
+        }
+
+        let mut records = Vec::new();
+        for (game_id, mut rows) in games {
+            rows.sort_by_key(|r| r.turn);
+
+            let moves = rows
+                .into_iter()
+                .map(|row| {
+                    let player = if row.player_id == "p1" { 0 } else { 1 };
+                    let rack = row
+                        .rack
+                        .chars()
+                        .map(|c| match c {
+                            '?' => Tile::blank(None),
+                            c => Tile::letter(c as u8),
+                        })
+                        .collect();
+
+                    let action = match row.play.trim() {
+                        "(Pass)" => Action::Pass,
+                        s if s.starts_with("(exch ") => {
+                            let tiles_str = &s[6..s.len() - 1];
+                            let tiles = tiles_str
+                                .chars()
+                                .map(|c| match c {
+                                    '?' => Tile::blank(None),
+                                    c => Tile::letter(c as u8),
+                                })
+                                .collect();
+                            Action::Swap(tiles)
+                        }
+                        _ => Action::Move(parse_move(&row.play, row.score).unwrap()),
+                    };
+
+                    GameMove {
+                        player,
+                        action,
+                        rack,
+                        equity: row.equity,
+                    }
+                })
+                .collect();
+
+            records.push(GameRecord { game_id, moves });
+        }
+
+        Ok(records)
+    }
+
+    pub fn csv_to_positions(csv_path: &str, output_path: &str) -> Result<usize, Box<dyn std::error::Error>> {
+        let csv_content = std::fs::read_to_string(csv_path)?;
+        let records = Self::from_csv(&csv_content)?;
+
+        let mut writer = BufWriter::new(File::create(output_path)?);
+        let mut position_count = 0;
+
+        for record in records {
+            let mut game = Game::init();
+
+            for game_move in &record.moves {
+                let mut pos = TrainingPosition {
+                    board: [[0; 15]; 15],
+                    rack_counts: [0; 27],
+                    bag_counts: [0; 27],
+                    my_score: game.scores[game.current_player],
+                    opp_score: game.scores[1 - game.current_player],
+                    scoreless_turns: game.zeroed_turns,
+                    _padding: [0; 3],
+                    target_equity: game_move.equity,
+                };
+
+                for row in 0..15 {
+                    for col in 0..15 {
+                        if let Some(tile) = game.board.get_board_tile(Pos::new(row, col)) {
+                            pos.board[row][col] = tile.to_index() + 1; // 0=empty, 1-27=tiles
+                        }
+                    }
                 }
 
-                if let Some(game_move) = parse_line(line, &player1) {
-                    moves.push(game_move);
+                for tile in game.racks[game.current_player].tiles() {
+                    pos.rack_counts[tile.to_index() as usize] += 1;
                 }
+
+                for i in 0..27 {
+                    pos.bag_counts[i] = game.bag.count(i);
+                }
+                for tile in game.racks[1 - game.current_player].tiles() {
+                    pos.bag_counts[tile.to_index() as usize] += 1;
+                }
+
+                let bytes = unsafe { std::slice::from_raw_parts(&pos as *const _ as *const u8, std::mem::size_of::<TrainingPosition>()) };
+                writer.write_all(bytes)?;
+
+                match &game_move.action {
+                    Action::Move(mv) => game.play_move(mv),
+                    Action::Pass => game.pass_turn(),
+                    Action::Swap(tiles) => game.exchange(tiles.clone()),
+                }
+
+                position_count += 1;
             }
         }
 
-        Ok(GameRecord {
-            game_id,
-            winner,
-            moves,
-            player1,
-            player2,
-        })
+        writer.flush()?;
+        println!("Wrote {} positions to {}", position_count, output_path);
+        Ok(position_count)
     }
 }
 
-fn parse_line(line: &str, player1: &str) -> Option<GameMove> {
-    if line.contains("(challenge)") || line.contains("(time)") {
-        return None;
-    }
-
-    // >HastyBot: AEEFHRU 8D FEUAR +24 24
-    // hastybot (0) plays FEAUR horizontally, starting at 8D which is row 8 and column D (4)
-    // it's rack before the move was AEEFHRU which means that they will have E,H left after the move
-    // for 24 points, which is all I care about
-
-    // >saviosas: ??AEKLN D8 .LANKErs +76 76
-    // saviosas (1) has two blanks (??) from their first draw (crazy biz)
-    // they play LANKErs vertically (letter before number) from the F in FEUAR
-    // for 76
-
-    // in my internal format, this would be a move struct with:
-    // pos at (number, letter)
-    // direction is horizontal if letter after number, vertical if letter before number
-    // tiles would be, for second example, a vec with:
-    // PlayedTile::Board('F'), PlayedTile::Tile('L'), PT:T('A'), etc.
-
-    let parts: Vec<&str> = line.split_whitespace().collect();
-    let rack_str = parts[1];
-
-    // end game
-    // >BasicBot: (GLRR) +10 357
-    // basic bot added the double value of GLRR (from opponent rack) to their score
-    if rack_str.starts_with('(') {
-        return None;
-    }
-
-    let player_name = &parts[0][1..parts[0].len() - 1];
-    let player = if player_name == player1.split_whitespace().next().unwrap_or("") {
-        0
-    } else {
-        1
-    };
-    let rack = parse_rack(rack_str)?;
-
-    let move_str = parts[2];
-
-    let action = match move_str {
-        // pass
-        // >LikeMike: EEEIRSZ - +0 96
-        "-" => Action::Pass,
-
-        // exchange
-        // >Oreoluwa: EKLLRRV -LLRR +0 256
-        // they exchanged LLRR. simple enough.
-        desc if desc.starts_with('-') => Action::Swap(parse_exchange(&desc[1..])),
-
-        // should be a move
-        _ => Action::Move(parse_move(&format!("{} {}", parts[2], parts[3]), parts[4])),
-    };
-
-    Some(GameMove { player, action, rack })
-}
-
-fn parse_rack(rack_str: &str) -> Option<Vec<Tile>> {
-    Some(
-        rack_str
-            .chars()
-            .map(|c| match c {
-                '?' => Tile::blank(None),
-                c => Tile::letter(c as u8),
-            })
-            .collect(),
-    )
-}
-
-fn parse_exchange(tiles_str: &str) -> Vec<Tile> {
-    tiles_str
-        .chars()
-        .map(|c| match c {
-            '?' => Tile::blank(None),
-            c => Tile::letter(c as u8),
-        })
-        .collect()
-}
-
-fn parse_move(move_str: &str, score_str: &str) -> Move {
-    println!("parsing move: {} {}", move_str, score_str);
-
-    // "8D FEUAR +24" -> horizontal at (7,3), tiles=[F,E,U,A,R], score=24
-    let parts: Vec<&str> = move_str.split_whitespace().collect();
+pub fn parse_move(play_str: &str, score: u16) -> Result<Move, Box<dyn std::error::Error>> {
+    let parts: Vec<&str> = play_str.trim().split_whitespace().collect();
     let pos_str = parts[0];
     let word = parts[1];
-    let score = score_str.trim_start_matches('+').parse::<u16>().unwrap_or(0);
 
-    // pos and direction
     let chars: Vec<char> = pos_str.chars().collect();
     let (pos, direction) = if chars[0].is_ascii_digit() {
         let digits: String = chars.iter().take_while(|c| c.is_ascii_digit()).collect();
-        let row = digits.parse::<usize>().unwrap() - 1;
+        let row = digits.parse::<usize>()? - 1;
         let col = (chars[digits.len()] as u8 - b'A') as usize;
         (Pos::new(row, col), Direction::Horizontal)
     } else {
         let col = (chars[0] as u8 - b'A') as usize;
         let row_str: String = chars[1..].iter().collect();
-        let row = row_str.parse::<usize>().unwrap() - 1;
+        let row = row_str.parse::<usize>()? - 1;
         (Pos::new(row, col), Direction::Vertical)
     };
 
     let tiles_data: SmallVec<[PlayedTile; 7]> = word
         .chars()
         .map(|c| match c {
-            '.' => PlayedTile::Board(Tile::letter(b'.')), // we dont know which one it is but we don't need it for training
+            '.' => PlayedTile::Board(Tile::letter(b'.')),
             c if c.is_lowercase() => PlayedTile::Rack(Tile::blank(Some(c.to_ascii_uppercase() as u8))),
             c => PlayedTile::Rack(Tile::letter(c as u8)),
         })
         .collect();
 
-    Move {
+    Ok(Move {
         tiles_data,
         pos,
         direction,
         score,
+    })
+}
+
+pub struct PositionsReader {
+    mmap: Mmap,
+    count: usize,
+}
+
+impl PositionsReader {
+    pub fn open(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let file = File::open(path)?;
+        let file_len = file.metadata()?.len() as usize;
+        let position_size = std::mem::size_of::<TrainingPosition>();
+        let count = file_len / position_size;
+
+        let mmap = unsafe { MmapOptions::new().map(&file)? };
+
+        Ok(PositionsReader { mmap, count })
+    }
+
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn get(&self, index: usize) -> Option<&TrainingPosition> {
+        if index >= self.count {
+            return None;
+        }
+
+        unsafe {
+            let positions = std::slice::from_raw_parts(self.mmap.as_ptr() as *const TrainingPosition, self.count);
+            Some(&positions[index])
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &TrainingPosition> {
+        let positions = unsafe { std::slice::from_raw_parts(self.mmap.as_ptr() as *const TrainingPosition, self.count) };
+        positions.iter()
     }
 }

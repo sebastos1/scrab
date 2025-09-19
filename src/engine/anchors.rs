@@ -51,7 +51,7 @@ pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChe
     for (pos, _) in board.tiles() {
         for &(dir_row, dir_col) in &directions {
             if let Some(neighbor_pos) = pos.offset(dir_row, dir_col) {
-                if board.get_board_tile(neighbor_pos).is_empty() {
+                if board.get_board_tile(neighbor_pos).is_none() {
                     anchors.insert(neighbor_pos);
                 }
             }
@@ -67,7 +67,7 @@ pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChe
 
         let mut current_pos = pos;
         while let Some(prev_pos) = current_pos.offset(directions[0].0, directions[0].1) {
-            if let Some(tile) = board.get_tile(prev_pos) {
+            if let Some(tile) = board.get_board_tile(prev_pos) {
                 prefix.insert(0, tile.byte());
                 cross_score = cross_score.saturating_add(tile.points());
                 current_pos = prev_pos;
@@ -78,7 +78,7 @@ pub fn find_anchors(board: &Board, direction: &Direction) -> (Vec<Pos>, CrossChe
 
         current_pos = pos;
         while let Some(next_pos) = current_pos.offset(directions[1].0, directions[1].1) {
-            if let Some(tile) = board.get_tile(next_pos) {
+            if let Some(tile) = board.get_board_tile(next_pos) {
                 suffix.push(tile.byte());
                 cross_score = cross_score.saturating_add(tile.points());
                 current_pos = next_pos;

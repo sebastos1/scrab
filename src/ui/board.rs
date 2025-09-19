@@ -138,7 +138,7 @@ impl super::UI {
             for col in 0..BOARD_SIZE {
                 let pos = Pos::new(row, col);
                 let (tile_x, tile_y) = self.tile_position(pos);
-                if let Some(tile) = board.get_tile(pos) {
+                if let Some(tile) = board.get_board_tile(pos) {
                     self.draw_letter_tile(tile_x, tile_y, CELL_SIZE, tile, false);
                 } else {
                     self.draw_board_tile(pos, board);
@@ -193,13 +193,14 @@ impl super::UI {
 
     pub fn draw_bag(&self, bag: &Bag) {
         let bag_x = MARGIN + BOARD_SIZE_PX + MARGIN;
-        let bag_y = MARGIN + BOARD_SIZE_PX + MARGIN; // lel
+        let bag_y = MARGIN + BOARD_SIZE_PX + MARGIN;
         let mini_tile_size = 20.0;
         let spacing = 25.0;
         let grid_cols = 6;
+        let total_tiles: u8 = bag.tiles.iter().sum();
 
         draw_text_ex(
-            &format!("Tiles left: {}", bag.tiles.len()),
+            &format!("Tiles left: {}", total_tiles),
             bag_x,
             bag_y,
             TextParams {
